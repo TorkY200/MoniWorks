@@ -6,13 +6,14 @@
 - **Phase 2 Core Accounting COMPLETE** - Tag: 0.0.2
 - **Phase 3 Tax & Bank COMPLETE** - Tag: 0.0.3
 - **Phase 4 Reports & Polish COMPLETE** - Tag: 0.0.8
+- **Phase 5 Contacts & Products COMPLETE** - Tag: 0.0.9
 - All 37 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, ApplicationTest: 1)
-- Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink
+- Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product
 - Database configured: H2 for development, PostgreSQL for production
-- Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql
-- All repository interfaces created (20 repositories)
-- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService
-- Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView, AuditEventsView
+- Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql
+- All repository interfaces created (24 repositories)
+- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService
+- Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView, AuditEventsView, ContactsView, ProductsView
 - Security configuration with SecurityConfig and UserDetailsServiceImpl (using VaadinSecurityConfigurer API)
 
 ## Release 1 (SLC) - Target Features
@@ -52,92 +53,50 @@ Per specs, Release 1 must deliver:
 
 ### Phase 3: Tax & Bank (COMPLETE) - Tag: 0.0.3
 - [x] Tax codes management UI
-  - Created TaxCodesView.java with full CRUD UI for managing tax codes
-  - Features: Grid display, add/edit dialogs, search/filter, activate/deactivate
-  - Added "Create default NZ GST codes" button for quick setup
-  - Added Tax Codes navigation item to MainLayout with calculator icon
 - [x] Tax calculation on transactions
-  - Created TaxLine entity to record calculated tax amounts per ledger entry
-  - Created TaxLineRepository with queries for tax reporting
-  - Created TaxCalculationService with tax-inclusive/exclusive calculations
-  - Updated PostingService to create TaxLines when posting transactions
-  - Created V3__tax_lines.sql migration
-  - Added 14 unit tests for TaxCalculationService (rounding, rates, exempt handling)
 - [x] Bank account linking (mark accounts as bank accounts)
-  - Added bank account fields to Account entity (isBankAccount, bankName, bankNumber, bankCurrency)
-  - Created V2__bank_accounts.sql migration
-  - Created BankStatementImport, BankFeedItem, AllocationRule entities
-  - Created BankImportService with QIF, OFX, and CSV parsing
-  - Updated AccountsView with bank account configuration fields
 - [x] Bank import (OFX/QIF parsing)
-  - Implemented in BankImportService with support for QIF, OFX, and CSV formats
 - [x] Reconciliation matching UI
-  - Created BankReconciliationView with two-pane split layout
-  - Bank account selector and statement import (upload QIF/OFX/CSV)
-  - Feed item grid showing unmatched items with date, amount, description
-  - Detail panel with allocation suggestions from AllocationRule matching
-  - Actions: Create transaction from feed item, match to existing, ignore
-  - Auto-suggests account and tax code based on allocation rules
-  - Creates balanced transactions (DR Bank / CR Account for receipts, etc.)
-  - Posts transactions immediately after creation
 
 ### Phase 4: Reports & Polish (COMPLETE) - Tag: 0.0.8
-- [x] Dashboard tiles
-  - Implemented Cash Balance tile showing all bank account balances with totals
-  - Implemented This Month tile showing current month's income, expenses, and net profit/loss
-  - Implemented GST Estimate tile showing output tax, input tax, and GST payable/refund
-  - Responsive flex layout with colored accent bars per tile
-  - Currency formatting for NZ locale
+- [x] Dashboard tiles (Cash Balance, This Month income/expenses, GST Estimate)
 - [x] Trial Balance report view
-  - Created ReportsView.java with tabbed interface for all 3 financial reports
-  - Date range pickers (from_date to to_date) for Trial Balance filtering
-  - Account, debit, credit, and balance columns with proper formatting
 - [x] P&L report view
-  - Date range pickers for period selection in P&L tab
-  - Revenue, Expense, and Net Profit/Loss calculations and display
-  - Formatted money display with totals rows
 - [x] Balance Sheet report view
-  - As-of date picker for balance sheet snapshot
-  - Assets, Liabilities, and Equity sections with hierarchical account structure
-  - Balance status indicators showing BALANCED/OUT OF BALANCE
 - [x] GST return generation
-  - Created TaxReturn entity with period, basis (cash/invoice), status (draft/finalized/filed)
-  - Created TaxReturnLine entity for box totals (NZ IR-03 format)
-  - Created TaxReturnRepository with period lookup queries
-  - Created TaxReturnService for generating returns from TaxLine data
-  - Created GstReturnsView with generate dialog, return grid, detail view
-  - Returns show NZ GST boxes: 5 (sales), 6 (zero-rated), 7 (purchases), 9 (output tax), 11 (input tax), 12 (payable)
-  - Support for finalize and mark-as-filed workflow
 - [x] Attachments support
-  - Created Attachment entity (id, companyId, filename, mimeType, size, checksumSha256, storageKey, uploadedAt, uploadedBy)
-  - Created AttachmentLink entity for polymorphic entity linking (TRANSACTION, INVOICE, BILL, PRODUCT, CONTACT)
-  - Created V5__attachments.sql migration with proper indexes
-  - Created AttachmentRepository and AttachmentLinkRepository with deduplication and entity queries
-  - Created AttachmentService with file upload, SHA-256 checksum, storage to filesystem, deduplication by checksum
-  - Allowed file types: PDF, JPEG, PNG, GIF, WEBP, TIFF, BMP (max 10MB)
-  - Storage path configurable via moniworks.attachments.storage-path property
-  - Updated TransactionsView with attachment upload in edit dialog and display in view dialog
-  - Added 10 unit tests for AttachmentService (upload, validation, deduplication, retrieval, deletion)
 - [x] Audit event logging UI
-  - Created AuditEventsView.java with grid display of all audit events
-  - Filtering by event type, entity type, and date range
-  - Detail dialog showing event metadata and formatted JSON details
-  - Added Audit Trail navigation item to MainLayout
-  - Backend logging already integrated in PostingService, TaxReturnService, AttachmentService
 
-### Phase 5: Release 2 - Contacts & Products (NOT STARTED)
-Per specs, Release 2 will add:
-- [ ] Contacts/Customers/Suppliers (spec 07)
-  - Contact entity with code, name, type (CUSTOMER/SUPPLIER/BOTH), category
-  - ContactPerson entity for multiple people per contact
-  - ContactNote for notes and follow-up reminders
-  - ContactsView with search, detail tabs, and CRUD
-  - Tax overrides and default GL allocation per contact
-- [ ] Products (spec 08 - non-inventory v1)
-  - Product entity with code, name, buy/sell prices, tax defaults
-  - ProductsView with filtering and detail view
-  - Sticky notes that appear when product selected
-- [ ] Dashboard Overdue AR/AP tiles (requires A/R and A/P from specs 09/10)
+### Phase 5: Release 2 - Contacts & Products (COMPLETE) - Tag: 0.0.9
+- [x] Contacts/Customers/Suppliers (spec 07)
+  - Created Contact entity with code (max 11 chars), name, type (CUSTOMER/SUPPLIER/BOTH), category, colorTag
+  - Full address fields (line1, line2, city, region, postalCode, country)
+  - Contact details (phone, mobile, email, website)
+  - Bank details for remittance (bankName, bankAccountNumber, bankRouting)
+  - Tax override code for special tax handling (e.g., zero-rated exports)
+  - Default account for GL allocation
+  - Payment terms and credit limit
+  - Created ContactPerson entity for multiple people per contact with name, email, phone, roleLabel, isPrimary
+  - Created ContactNote entity for notes and follow-up reminders with noteText, followUpDate, createdBy
+  - Created V6__contacts.sql migration with proper indexes
+  - Created ContactRepository, ContactPersonRepository, ContactNoteRepository
+  - Created ContactService with full CRUD, search, audit logging
+  - Created ContactsView with master-detail split layout, searchable list, type filter
+  - Detail view with tabs: General (info), People (CRUD), Defaults (accounts/terms), Notes (CRUD)
+  - Added Contacts navigation to MainLayout with USERS icon
+- [x] Products (spec 08 - non-inventory v1)
+  - Created Product entity with code (max 31 chars), name, description, category
+  - Pricing: buyPrice, sellPrice (BigDecimal 19,2)
+  - Tax code reference for default tax handling
+  - Default accounts: salesAccount (income), purchaseAccount (expense)
+  - Barcode field, imageAttachmentId reference, isInventoried flag (for Phase 2)
+  - Sticky note that appears when product selected on invoices/bills
+  - Created V7__products.sql migration with proper indexes
+  - Created ProductRepository with search and category queries
+  - Created ProductService with full CRUD, search by barcode, audit logging
+  - Created ProductsView with master-detail split layout, category filter
+  - Detail view showing pricing, tax/accounts, other info, sticky note display
+  - Added Products navigation to MainLayout with PACKAGE icon
 
 ### Phase 6: Release 2 - A/R and A/P (NOT STARTED)
 - [ ] Accounts Receivable (spec 09)
@@ -146,9 +105,10 @@ Per specs, Release 2 will add:
   - Customer statements
   - Receipt allocation to invoices
 - [ ] Accounts Payable (spec 10)
-  - Bill and BillLine entities
+  - SupplierBill and SupplierBillLine entities
   - Payment runs
   - Remittance advice PDF
+- [ ] Dashboard Overdue AR/AP tiles
 
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
@@ -159,6 +119,8 @@ Per specs, Release 2 will add:
 - When adding new dependencies to PostingService (like TaxCalculationService), update unit tests to include mocks
 - Vaadin 25+ deprecates MemoryBuffer and StreamResource - functionality still works but will need update in future versions
 - File attachments stored outside DB with checksums for integrity; deduplication by checksum within company scope
+- AuditService.logEvent requires User parameter (can be null for system actions)
+- AccountService.findByType takes companyId (Long), not Company object
 
 ## Technical Notes
 - Build: `./mvnw compile`
@@ -180,3 +142,5 @@ Per specs, Release 2 will add:
 - Attachments stored on filesystem with path: {storagePath}/{companyId}/{year}/{month}/{uuid}_{sanitizedFilename}
 - Attachment deduplication by SHA-256 checksum within company scope (avoids storing same file twice)
 - Audit events are append-only and immutable - no delete capability exposed in UI
+- Contacts support CUSTOMER, SUPPLIER, or BOTH types for flexible use in A/R and A/P
+- Products have separate sales and purchase accounts for proper P&L allocation

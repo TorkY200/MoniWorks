@@ -3,9 +3,11 @@ package com.example.application.ui;
 import com.example.application.ui.views.AccountsView;
 import com.example.application.ui.views.AuditEventsView;
 import com.example.application.ui.views.BankReconciliationView;
+import com.example.application.ui.views.ContactsView;
 import com.example.application.ui.views.DashboardView;
 import com.example.application.ui.views.GstReturnsView;
 import com.example.application.ui.views.PeriodsView;
+import com.example.application.ui.views.ProductsView;
 import com.example.application.ui.views.ReportsView;
 import com.example.application.ui.views.TaxCodesView;
 import com.example.application.ui.views.TransactionsView;
@@ -62,6 +64,10 @@ public class MainLayout extends AppLayout {
             VaadinIcon.DASHBOARD.create()));
         nav.addItem(new SideNavItem("Transactions", TransactionsView.class,
             VaadinIcon.EXCHANGE.create()));
+        nav.addItem(new SideNavItem("Contacts", ContactsView.class,
+            VaadinIcon.USERS.create()));
+        nav.addItem(new SideNavItem("Products", ProductsView.class,
+            VaadinIcon.PACKAGE.create()));
         nav.addItem(new SideNavItem("Bank Reconciliation", BankReconciliationView.class,
             VaadinIcon.PIGGY_BANK.create()));
         nav.addItem(new SideNavItem("Accounts", AccountsView.class,
