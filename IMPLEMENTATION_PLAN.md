@@ -48,8 +48,12 @@ Per specs, Release 1 must deliver:
 - [x] TransactionsView with full CRUD, transaction lines grid, posting, reversals
 - [x] PostingService with validation (balanced entries, open periods, active accounts)
 
-### Phase 3: Tax & Bank (Current)
-- [ ] Tax codes management UI
+### Phase 3: Tax & Bank (In Progress)
+- [x] Tax codes management UI
+  - Created TaxCodesView.java with full CRUD UI for managing tax codes
+  - Features: Grid display, add/edit dialogs, search/filter, activate/deactivate
+  - Added "Create default NZ GST codes" button for quick setup
+  - Added Tax Codes navigation item to MainLayout with calculator icon
 - [ ] Tax calculation on transactions
 - [ ] Bank account linking (mark accounts as bank accounts)
 - [ ] Bank import (OFX/QIF parsing)
