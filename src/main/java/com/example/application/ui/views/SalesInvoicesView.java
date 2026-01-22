@@ -3,8 +3,10 @@ package com.example.application.ui.views;
 import com.example.application.domain.*;
 import com.example.application.domain.Contact.ContactType;
 import com.example.application.domain.SalesInvoice.InvoiceStatus;
+import com.example.application.domain.SavedView.EntityType;
 import com.example.application.service.*;
 import com.example.application.ui.MainLayout;
+import com.example.application.ui.components.GridCustomizer;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
@@ -59,10 +61,12 @@ public class SalesInvoicesView extends VerticalLayout {
     private final InvoicePdfService invoicePdfService;
     private final EmailService emailService;
     private final ReceivableAllocationService receivableAllocationService;
+    private final SavedViewService savedViewService;
 
     private final Grid<SalesInvoice> grid = new Grid<>();
     private final TextField searchField = new TextField();
     private final ComboBox<String> statusFilter = new ComboBox<>();
+    private GridCustomizer<SalesInvoice> gridCustomizer;
 
     private final VerticalLayout detailLayout = new VerticalLayout();
     private SalesInvoice selectedInvoice;
@@ -77,7 +81,8 @@ public class SalesInvoicesView extends VerticalLayout {
                              CompanyContextService companyContextService,
                              InvoicePdfService invoicePdfService,
                              EmailService emailService,
-                             ReceivableAllocationService receivableAllocationService) {
+                             ReceivableAllocationService receivableAllocationService,
+                             SavedViewService savedViewService) {
         this.invoiceService = invoiceService;
         this.contactService = contactService;
         this.accountService = accountService;
@@ -87,6 +92,7 @@ public class SalesInvoicesView extends VerticalLayout {
         this.invoicePdfService = invoicePdfService;
         this.emailService = emailService;
         this.receivableAllocationService = receivableAllocationService;
+        this.savedViewService = savedViewService;
 
         addClassName("invoices-view");
         setSizeFull();
@@ -124,37 +130,51 @@ public class SalesInvoicesView extends VerticalLayout {
 
         grid.addColumn(SalesInvoice::getInvoiceNumber)
             .setHeader("Invoice #")
+            .setKey("invoiceNumber")
             .setSortable(true)
+            .setResizable(true)
             .setAutoWidth(true)
             .setFlexGrow(0);
 
         grid.addColumn(i -> i.getContact().getName())
             .setHeader("Customer")
+            .setKey("customer")
             .setSortable(true)
+            .setResizable(true)
             .setFlexGrow(1);
 
         grid.addColumn(i -> i.getIssueDate().format(DATE_FORMATTER))
             .setHeader("Date")
+            .setKey("issueDate")
             .setSortable(true)
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.addColumn(i -> i.getDueDate().format(DATE_FORMATTER))
             .setHeader("Due")
+            .setKey("dueDate")
             .setSortable(true)
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.addColumn(i -> "$" + i.getTotal().toPlainString())
             .setHeader("Total")
+            .setKey("total")
             .setSortable(true)
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.addColumn(i -> "$" + i.getBalance().toPlainString())
             .setHeader("Balance")
+            .setKey("balance")
             .setSortable(true)
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.addComponentColumn(this::createStatusBadge)
             .setHeader("Status")
+            .setKey("status")
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.asSingleSelect().addValueChangeListener(e -> {
@@ -205,6 +225,15 @@ public class SalesInvoicesView extends VerticalLayout {
         statusFilter.addValueChangeListener(e -> filterInvoices());
         statusFilter.setWidth("130px");
 
+        // Grid customizer for column visibility and saved views
+        Company company = companyContextService.getCurrentCompany();
+        User user = companyContextService.getCurrentUser();
+        if (company != null && user != null) {
+            gridCustomizer = new GridCustomizer<>(
+                grid, EntityType.SALES_INVOICE, savedViewService, company, user
+            );
+        }
+
         Button addButton = new Button("New Invoice", VaadinIcon.PLUS.create());
         addButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         addButton.addClickListener(e -> openNewInvoiceDialog());
@@ -214,7 +243,11 @@ public class SalesInvoicesView extends VerticalLayout {
         refreshButton.addClickListener(e -> loadInvoices());
         refreshButton.getElement().setAttribute("title", "Refresh");
 
-        HorizontalLayout filters = new HorizontalLayout(searchField, statusFilter, addButton, refreshButton);
+        HorizontalLayout filters = new HorizontalLayout(searchField, statusFilter);
+        if (gridCustomizer != null) {
+            filters.add(gridCustomizer);
+        }
+        filters.add(addButton, refreshButton);
         filters.setAlignItems(FlexComponent.Alignment.BASELINE);
 
         HorizontalLayout toolbar = new HorizontalLayout(title, filters);

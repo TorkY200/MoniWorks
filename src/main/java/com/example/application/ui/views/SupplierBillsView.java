@@ -2,9 +2,11 @@ package com.example.application.ui.views;
 
 import com.example.application.domain.*;
 import com.example.application.domain.Contact.ContactType;
+import com.example.application.domain.SavedView.EntityType;
 import com.example.application.domain.SupplierBill.BillStatus;
 import com.example.application.service.*;
 import com.example.application.ui.MainLayout;
+import com.example.application.ui.components.GridCustomizer;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
@@ -54,10 +56,12 @@ public class SupplierBillsView extends VerticalLayout {
     private final TaxCodeService taxCodeService;
     private final CompanyContextService companyContextService;
     private final PayableAllocationService payableAllocationService;
+    private final SavedViewService savedViewService;
 
     private final Grid<SupplierBill> grid = new Grid<>();
     private final TextField searchField = new TextField();
     private final ComboBox<String> statusFilter = new ComboBox<>();
+    private GridCustomizer<SupplierBill> gridCustomizer;
 
     private final VerticalLayout detailLayout = new VerticalLayout();
     private SupplierBill selectedBill;
@@ -70,7 +74,8 @@ public class SupplierBillsView extends VerticalLayout {
                              ProductService productService,
                              TaxCodeService taxCodeService,
                              CompanyContextService companyContextService,
-                             PayableAllocationService payableAllocationService) {
+                             PayableAllocationService payableAllocationService,
+                             SavedViewService savedViewService) {
         this.billService = billService;
         this.contactService = contactService;
         this.accountService = accountService;
@@ -78,6 +83,7 @@ public class SupplierBillsView extends VerticalLayout {
         this.taxCodeService = taxCodeService;
         this.companyContextService = companyContextService;
         this.payableAllocationService = payableAllocationService;
+        this.savedViewService = savedViewService;
 
         addClassName("bills-view");
         setSizeFull();
@@ -115,37 +121,51 @@ public class SupplierBillsView extends VerticalLayout {
 
         grid.addColumn(SupplierBill::getBillNumber)
             .setHeader("Bill #")
+            .setKey("billNumber")
             .setSortable(true)
+            .setResizable(true)
             .setAutoWidth(true)
             .setFlexGrow(0);
 
         grid.addColumn(b -> b.getContact().getName())
             .setHeader("Supplier")
+            .setKey("supplier")
             .setSortable(true)
+            .setResizable(true)
             .setFlexGrow(1);
 
         grid.addColumn(b -> b.getBillDate().format(DATE_FORMATTER))
             .setHeader("Date")
+            .setKey("billDate")
             .setSortable(true)
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.addColumn(b -> b.getDueDate().format(DATE_FORMATTER))
             .setHeader("Due")
+            .setKey("dueDate")
             .setSortable(true)
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.addColumn(b -> "$" + b.getTotal().toPlainString())
             .setHeader("Total")
+            .setKey("total")
             .setSortable(true)
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.addColumn(b -> "$" + b.getBalance().toPlainString())
             .setHeader("Balance")
+            .setKey("balance")
             .setSortable(true)
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.addComponentColumn(this::createStatusBadge)
             .setHeader("Status")
+            .setKey("status")
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.asSingleSelect().addValueChangeListener(e -> {
@@ -196,6 +216,15 @@ public class SupplierBillsView extends VerticalLayout {
         statusFilter.addValueChangeListener(e -> filterBills());
         statusFilter.setWidth("130px");
 
+        // Grid customizer for column visibility and saved views
+        Company company = companyContextService.getCurrentCompany();
+        User user = companyContextService.getCurrentUser();
+        if (company != null && user != null) {
+            gridCustomizer = new GridCustomizer<>(
+                grid, EntityType.SUPPLIER_BILL, savedViewService, company, user
+            );
+        }
+
         Button addButton = new Button("New Bill", VaadinIcon.PLUS.create());
         addButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         addButton.addClickListener(e -> openNewBillDialog());
@@ -205,7 +234,11 @@ public class SupplierBillsView extends VerticalLayout {
         refreshButton.addClickListener(e -> loadBills());
         refreshButton.getElement().setAttribute("title", "Refresh");
 
-        HorizontalLayout filters = new HorizontalLayout(searchField, statusFilter, addButton, refreshButton);
+        HorizontalLayout filters = new HorizontalLayout(searchField, statusFilter);
+        if (gridCustomizer != null) {
+            filters.add(gridCustomizer);
+        }
+        filters.add(addButton, refreshButton);
         filters.setAlignItems(FlexComponent.Alignment.BASELINE);
 
         HorizontalLayout toolbar = new HorizontalLayout(title, filters);

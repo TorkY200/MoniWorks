@@ -19,6 +19,7 @@
 - **Phase 13b Payment Allocation UI COMPLETE** - Tag: 0.2.3
 - **Phase 13c Statement Runs COMPLETE** - Tag: 0.2.4
 - **Phase 13d Statement Runs UI COMPLETE** - Tag: 0.2.5
+- **Phase 14 SavedView Grid Integration COMPLETE** - Tag: 0.2.6
 - All 70 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, ApplicationTest: 1)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView
 - Database configured: H2 for development, PostgreSQL for production
@@ -390,6 +391,16 @@ Per specs, Release 1 must deliver:
   - Detail panel showing run info, criteria, and status
   - Added Statement Runs navigation to MainLayout with PRINT icon
 - [x] User.getDisplayName() used instead of getFullName() (lesson learned)
+
+### Phase 14: SavedView Grid Integration (COMPLETE) - Tag: 0.2.6
+- [x] Extend GridCustomizer to additional views (spec 15)
+  - Added GridCustomizer to ContactsView with column keys: code, name, type, email, phone, category, status
+  - Added GridCustomizer to SalesInvoicesView with column keys: invoiceNumber, customer, issueDate, dueDate, total, balance, status
+  - Added GridCustomizer to SupplierBillsView with column keys: billNumber, supplier, billDate, dueDate, total, balance, status
+  - Added GridCustomizer to ProductsView with column keys: code, name, category, sellPrice, buyPrice, status
+  - Added SavedViewService injection to all updated views
+  - Added column resizing support (.setResizable(true)) to all columns
+  - GridCustomizer allows users to save custom column layouts per view
 
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead

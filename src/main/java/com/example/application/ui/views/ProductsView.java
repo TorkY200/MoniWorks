@@ -3,11 +3,15 @@ package com.example.application.ui.views;
 import com.example.application.domain.Account;
 import com.example.application.domain.Company;
 import com.example.application.domain.Product;
+import com.example.application.domain.SavedView.EntityType;
+import com.example.application.domain.User;
 import com.example.application.service.AccountService;
 import com.example.application.service.CompanyContextService;
 import com.example.application.service.ProductService;
+import com.example.application.service.SavedViewService;
 import com.example.application.service.TaxCodeService;
 import com.example.application.ui.MainLayout;
+import com.example.application.ui.components.GridCustomizer;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
@@ -53,10 +57,12 @@ public class ProductsView extends VerticalLayout {
     private final AccountService accountService;
     private final TaxCodeService taxCodeService;
     private final CompanyContextService companyContextService;
+    private final SavedViewService savedViewService;
 
     private final Grid<Product> grid = new Grid<>();
     private final TextField searchField = new TextField();
     private final ComboBox<String> categoryFilter = new ComboBox<>();
+    private GridCustomizer<Product> gridCustomizer;
 
     private final VerticalLayout detailLayout = new VerticalLayout();
     private Product selectedProduct;
@@ -66,11 +72,13 @@ public class ProductsView extends VerticalLayout {
     public ProductsView(ProductService productService,
                         AccountService accountService,
                         TaxCodeService taxCodeService,
-                        CompanyContextService companyContextService) {
+                        CompanyContextService companyContextService,
+                        SavedViewService savedViewService) {
         this.productService = productService;
         this.accountService = accountService;
         this.taxCodeService = taxCodeService;
         this.companyContextService = companyContextService;
+        this.savedViewService = savedViewService;
 
         addClassName("products-view");
         setSizeFull();
@@ -109,30 +117,42 @@ public class ProductsView extends VerticalLayout {
 
         grid.addColumn(Product::getCode)
             .setHeader("Code")
+            .setKey("code")
             .setSortable(true)
+            .setResizable(true)
             .setAutoWidth(true)
             .setFlexGrow(0);
 
         grid.addColumn(Product::getName)
             .setHeader("Name")
+            .setKey("name")
             .setSortable(true)
+            .setResizable(true)
             .setFlexGrow(1);
 
         grid.addColumn(Product::getCategory)
             .setHeader("Category")
+            .setKey("category")
             .setSortable(true)
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.addColumn(p -> formatPrice(p.getSellPrice()))
             .setHeader("Sell Price")
+            .setKey("sellPrice")
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.addColumn(p -> formatPrice(p.getBuyPrice()))
             .setHeader("Buy Price")
+            .setKey("buyPrice")
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.addColumn(p -> p.isActive() ? "Active" : "Inactive")
             .setHeader("Status")
+            .setKey("status")
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.asSingleSelect().addValueChangeListener(e -> {
@@ -164,6 +184,15 @@ public class ProductsView extends VerticalLayout {
         categoryFilter.addValueChangeListener(e -> filterProducts());
         categoryFilter.setWidth("150px");
 
+        // Grid customizer for column visibility and saved views
+        Company company = companyContextService.getCurrentCompany();
+        User user = companyContextService.getCurrentUser();
+        if (company != null && user != null) {
+            gridCustomizer = new GridCustomizer<>(
+                grid, EntityType.PRODUCT, savedViewService, company, user
+            );
+        }
+
         Button addButton = new Button("Add Product", VaadinIcon.PLUS.create());
         addButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         addButton.addClickListener(e -> openProductDialog(null));
@@ -176,7 +205,11 @@ public class ProductsView extends VerticalLayout {
         });
         refreshButton.getElement().setAttribute("title", "Refresh");
 
-        HorizontalLayout filters = new HorizontalLayout(searchField, categoryFilter, addButton, refreshButton);
+        HorizontalLayout filters = new HorizontalLayout(searchField, categoryFilter);
+        if (gridCustomizer != null) {
+            filters.add(gridCustomizer);
+        }
+        filters.add(addButton, refreshButton);
         filters.setAlignItems(FlexComponent.Alignment.BASELINE);
 
         HorizontalLayout toolbar = new HorizontalLayout(title, filters);

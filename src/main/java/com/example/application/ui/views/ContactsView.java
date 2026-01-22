@@ -2,10 +2,13 @@ package com.example.application.ui.views;
 
 import com.example.application.domain.*;
 import com.example.application.domain.Contact.ContactType;
+import com.example.application.domain.SavedView.EntityType;
 import com.example.application.service.AccountService;
 import com.example.application.service.CompanyContextService;
 import com.example.application.service.ContactService;
+import com.example.application.service.SavedViewService;
 import com.example.application.ui.MainLayout;
+import com.example.application.ui.components.GridCustomizer;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
@@ -53,10 +56,12 @@ public class ContactsView extends VerticalLayout {
     private final ContactService contactService;
     private final AccountService accountService;
     private final CompanyContextService companyContextService;
+    private final SavedViewService savedViewService;
 
     private final Grid<Contact> grid = new Grid<>();
     private final TextField searchField = new TextField();
     private final ComboBox<String> typeFilter = new ComboBox<>();
+    private GridCustomizer<Contact> gridCustomizer;
 
     private final VerticalLayout detailLayout = new VerticalLayout();
     private Contact selectedContact;
@@ -66,10 +71,12 @@ public class ContactsView extends VerticalLayout {
 
     public ContactsView(ContactService contactService,
                         AccountService accountService,
-                        CompanyContextService companyContextService) {
+                        CompanyContextService companyContextService,
+                        SavedViewService savedViewService) {
         this.contactService = contactService;
         this.accountService = accountService;
         this.companyContextService = companyContextService;
+        this.savedViewService = savedViewService;
 
         addClassName("contacts-view");
         setSizeFull();
@@ -107,26 +114,48 @@ public class ContactsView extends VerticalLayout {
 
         grid.addColumn(Contact::getCode)
             .setHeader("Code")
+            .setKey("code")
             .setSortable(true)
             .setAutoWidth(true)
+            .setResizable(true)
             .setFlexGrow(0);
 
         grid.addColumn(Contact::getName)
             .setHeader("Name")
+            .setKey("name")
             .setSortable(true)
+            .setResizable(true)
             .setFlexGrow(1);
 
         grid.addColumn(c -> c.getType().name())
             .setHeader("Type")
+            .setKey("type")
             .setSortable(true)
+            .setResizable(true)
+            .setAutoWidth(true);
+
+        grid.addColumn(Contact::getEmail)
+            .setHeader("Email")
+            .setKey("email")
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.addColumn(Contact::getPhone)
             .setHeader("Phone")
+            .setKey("phone")
+            .setResizable(true)
+            .setAutoWidth(true);
+
+        grid.addColumn(Contact::getCategory)
+            .setHeader("Category")
+            .setKey("category")
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.addColumn(c -> c.isActive() ? "Active" : "Inactive")
             .setHeader("Status")
+            .setKey("status")
+            .setResizable(true)
             .setAutoWidth(true);
 
         grid.asSingleSelect().addValueChangeListener(e -> {
@@ -154,6 +183,15 @@ public class ContactsView extends VerticalLayout {
         typeFilter.addValueChangeListener(e -> filterContacts());
         typeFilter.setWidth("130px");
 
+        // Grid customizer for column visibility and saved views
+        Company company = companyContextService.getCurrentCompany();
+        User user = companyContextService.getCurrentUser();
+        if (company != null && user != null) {
+            gridCustomizer = new GridCustomizer<>(
+                grid, EntityType.CONTACT, savedViewService, company, user
+            );
+        }
+
         Button addButton = new Button("Add Contact", VaadinIcon.PLUS.create());
         addButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         addButton.addClickListener(e -> openContactDialog(null));
@@ -163,7 +201,11 @@ public class ContactsView extends VerticalLayout {
         refreshButton.addClickListener(e -> loadContacts());
         refreshButton.getElement().setAttribute("title", "Refresh");
 
-        HorizontalLayout filters = new HorizontalLayout(searchField, typeFilter, addButton, refreshButton);
+        HorizontalLayout filters = new HorizontalLayout(searchField, typeFilter);
+        if (gridCustomizer != null) {
+            filters.add(gridCustomizer);
+        }
+        filters.add(addButton, refreshButton);
         filters.setAlignItems(FlexComponent.Alignment.BASELINE);
 
         HorizontalLayout toolbar = new HorizontalLayout(title, filters);
