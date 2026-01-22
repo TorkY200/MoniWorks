@@ -2,10 +2,12 @@ package com.example.application.ui.views;
 
 import com.example.application.domain.*;
 import com.example.application.domain.AttachmentLink.EntityType;
+import com.example.application.domain.SavedView;
 import com.example.application.domain.Transaction.TransactionType;
 import com.example.application.domain.TransactionLine.Direction;
 import com.example.application.service.*;
 import com.example.application.ui.MainLayout;
+import com.example.application.ui.components.GridCustomizer;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
@@ -56,10 +58,12 @@ public class TransactionsView extends VerticalLayout {
     private final TaxCodeService taxCodeService;
     private final CompanyContextService companyContextService;
     private final AttachmentService attachmentService;
+    private final SavedViewService savedViewService;
 
     private final Grid<Transaction> grid = new Grid<>();
     private final ComboBox<TransactionType> typeFilter = new ComboBox<>();
     private final ComboBox<Transaction.Status> statusFilter = new ComboBox<>();
+    private GridCustomizer<Transaction> gridCustomizer;
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
@@ -68,13 +72,15 @@ public class TransactionsView extends VerticalLayout {
                             AccountService accountService,
                             TaxCodeService taxCodeService,
                             CompanyContextService companyContextService,
-                            AttachmentService attachmentService) {
+                            AttachmentService attachmentService,
+                            SavedViewService savedViewService) {
         this.transactionService = transactionService;
         this.postingService = postingService;
         this.accountService = accountService;
         this.taxCodeService = taxCodeService;
         this.companyContextService = companyContextService;
         this.attachmentService = attachmentService;
+        this.savedViewService = savedViewService;
 
         addClassName("transactions-view");
         setSizeFull();
@@ -91,33 +97,46 @@ public class TransactionsView extends VerticalLayout {
         grid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES);
 
         grid.addColumn(t -> t.getTransactionDate().format(DATE_FORMAT))
+            .setKey("date")
             .setHeader("Date")
             .setSortable(true)
-            .setAutoWidth(true);
+            .setAutoWidth(true)
+            .setResizable(true);
 
         grid.addColumn(t -> t.getType().name())
+            .setKey("type")
             .setHeader("Type")
             .setSortable(true)
-            .setAutoWidth(true);
+            .setAutoWidth(true)
+            .setResizable(true);
 
         grid.addColumn(Transaction::getReference)
+            .setKey("reference")
             .setHeader("Reference")
-            .setAutoWidth(true);
+            .setAutoWidth(true)
+            .setResizable(true);
 
         grid.addColumn(Transaction::getDescription)
+            .setKey("description")
             .setHeader("Description")
-            .setFlexGrow(1);
+            .setFlexGrow(1)
+            .setResizable(true);
 
         grid.addColumn(this::calculateTotal)
+            .setKey("amount")
             .setHeader("Amount")
-            .setAutoWidth(true);
+            .setAutoWidth(true)
+            .setResizable(true);
 
         grid.addColumn(t -> t.getStatus().name())
+            .setKey("status")
             .setHeader("Status")
             .setSortable(true)
-            .setAutoWidth(true);
+            .setAutoWidth(true)
+            .setResizable(true);
 
         grid.addComponentColumn(this::createActionButtons)
+            .setKey("actions")
             .setHeader("Actions")
             .setAutoWidth(true)
             .setFlexGrow(0);
@@ -189,6 +208,15 @@ public class TransactionsView extends VerticalLayout {
         statusFilter.addValueChangeListener(e -> loadTransactions());
         statusFilter.setWidth("150px");
 
+        // Grid customizer for column visibility and saved views
+        Company company = companyContextService.getCurrentCompany();
+        User user = companyContextService.getCurrentUser();
+        if (company != null && user != null) {
+            gridCustomizer = new GridCustomizer<>(
+                grid, SavedView.EntityType.TRANSACTION, savedViewService, company, user
+            );
+        }
+
         Button paymentBtn = new Button("Payment", VaadinIcon.MINUS.create());
         paymentBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         paymentBtn.addClickListener(e -> openNewTransactionDialog(TransactionType.PAYMENT));
@@ -206,6 +234,9 @@ public class TransactionsView extends VerticalLayout {
         refreshBtn.getElement().setAttribute("title", "Refresh");
 
         HorizontalLayout filters = new HorizontalLayout(typeFilter, statusFilter);
+        if (gridCustomizer != null) {
+            filters.add(gridCustomizer);
+        }
         filters.setAlignItems(FlexComponent.Alignment.BASELINE);
 
         HorizontalLayout buttons = new HorizontalLayout(paymentBtn, receiptBtn, journalBtn, refreshBtn);

@@ -11,12 +11,13 @@
 - **Phase 7 Budgeting & Departments COMPLETE** - Tag: 0.1.4
 - **Phase 8 Recurring Transactions COMPLETE** - Tag: 0.1.5
 - **Phase 9 Report Export & Search COMPLETE** - Tag: 0.1.7
-- All 49 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, ApplicationTest: 1)
+- **Phase 10 Email & Grid Customization COMPLETE** - Tag: 0.1.8
+- All 70 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, ApplicationTest: 1)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView
 - Database configured: H2 for development, PostgreSQL for production
 - Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql
 - All repository interfaces created (38 repositories)
-- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService, SalesInvoiceService, ReceivableAllocationService, SupplierBillService, PayableAllocationService, PaymentRunService, RemittanceAdviceService, DepartmentService, BudgetService, KPIService, RecurringTemplateService, ReportExportService, GlobalSearchService, SavedViewService
+- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService, SalesInvoiceService, ReceivableAllocationService, SupplierBillService, PayableAllocationService, PaymentRunService, RemittanceAdviceService, DepartmentService, BudgetService, KPIService, RecurringTemplateService, ReportExportService, GlobalSearchService, SavedViewService, EmailService
 - Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView, AuditEventsView, ContactsView, ProductsView, SalesInvoicesView, SupplierBillsView, DepartmentsView, BudgetsView, KPIsView, RecurringTemplatesView, GlobalSearchView
 - Security configuration with SecurityConfig and UserDetailsServiceImpl (using VaadinSecurityConfigurer API)
 
@@ -237,9 +238,28 @@ Per specs, Release 1 must deliver:
   - Default view support per entity type per user
   - Audit logging for view creation, update, rename, delete
 
-### Phase 10: Email & Polish (TODO)
-- [ ] Email sending integration (spec 13)
-- [ ] Grid customization UI (column reorder, show/hide, save views)
+### Phase 10: Email & Grid Customization (COMPLETE) - Tag: 0.1.8
+- [x] Email sending integration (spec 13)
+  - Created EmailService with comprehensive email building and validation
+  - EmailRequest builder pattern for constructing emails with to/subject/body/attachments
+  - EmailResult record for success/failure status tracking
+  - Specialized methods: sendInvoice, sendStatement, sendRemittanceAdvice, sendReport
+  - Email validation (address format, required fields)
+  - v1 stub implementation (logging only, no actual SMTP sending)
+  - Configurable via application.properties: moniworks.email.enabled, moniworks.email.from-address, moniworks.email.from-name
+  - Audit logging for all email requests
+  - 26 unit tests covering all email scenarios
+- [x] Grid customization UI (column reorder, show/hide, save views)
+  - Created GridCustomizer<T> reusable component for any grid
+  - Column visibility toggles via dialog
+  - Column reordering via drag-and-drop (grid.setColumnReorderingAllowed)
+  - Integration with SavedView entity for persistent column configurations
+  - View selector dropdown to switch between saved views
+  - Save/Save As buttons for current configuration
+  - Manage views dialog for rename/delete/set default
+  - Reset to original columns functionality
+  - Added column keys and resize support to TransactionsView grid
+  - CompanyContextService.getCurrentUser() method added for user context
 
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
@@ -271,6 +291,10 @@ Per specs, Release 1 must deliver:
 - When creating Vaadin views with listeners referencing other UI components, ensure those components are initialized before the listener is defined to avoid "variable might not have been initialized" errors
 - TransactionLine uses amount/direction (DEBIT/CREDIT) pattern, not separate debitAmount/creditAmount fields
 - SalesInvoiceRepository uses findByCompanyOrderByIssueDateDescInvoiceNumberDesc, SupplierBillRepository uses findByCompanyOrderByBillDateDescBillNumberDesc
+- SalesInvoice uses getTotal() not getTotalAmount() for the invoice total
+- Vaadin TextField uses setAutoselect(true) instead of selectAll() method
+- GridCustomizer requires column keys (.setKey()) to be set on grid columns for customization to work
+- CompanyContextService.getCurrentUser() uses SecurityContextHolder to get authenticated user
 
 ## Technical Notes
 - Build: `./mvnw compile`

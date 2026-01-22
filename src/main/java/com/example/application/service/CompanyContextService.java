@@ -1,7 +1,11 @@
 package com.example.application.service;
 
 import com.example.application.domain.Company;
+import com.example.application.domain.User;
+import com.example.application.repository.UserRepository;
 import com.vaadin.flow.spring.annotation.VaadinSessionScope;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -17,10 +21,13 @@ import java.util.Optional;
 public class CompanyContextService {
 
     private final CompanyService companyService;
+    private final UserRepository userRepository;
     private Company currentCompany;
+    private User currentUser;
 
-    public CompanyContextService(CompanyService companyService) {
+    public CompanyContextService(CompanyService companyService, UserRepository userRepository) {
         this.companyService = companyService;
+        this.userRepository = userRepository;
     }
 
     /**
@@ -80,5 +87,27 @@ public class CompanyContextService {
             currentCompany = companyService.findById(currentCompany.getId())
                 .orElse(null);
         }
+    }
+
+    /**
+     * Gets the current authenticated user.
+     * @return the current user, or null if not authenticated
+     */
+    public User getCurrentUser() {
+        if (currentUser == null) {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+                currentUser = userRepository.findByEmail(auth.getName()).orElse(null);
+            }
+        }
+        return currentUser;
+    }
+
+    /**
+     * Clears the current user cache.
+     * Call this when the user context may have changed.
+     */
+    public void clearUserCache() {
+        currentUser = null;
     }
 }
