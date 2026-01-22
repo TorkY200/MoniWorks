@@ -32,4 +32,34 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
 
     @Query("SELECT a FROM Account a WHERE a.company = :company AND a.bankAccount = true AND a.active = true ORDER BY a.code")
     List<Account> findBankAccountsByCompany(@Param("company") Company company);
+
+    // Security-filtered queries - filter accounts by user's max security level
+    // Accounts with securityLevel > maxSecurityLevel are hidden
+    // securityLevel null is treated as 0 (unrestricted)
+
+    @Query("SELECT a FROM Account a WHERE a.company = :company AND (a.securityLevel IS NULL OR a.securityLevel <= :maxSecurityLevel) ORDER BY a.code")
+    List<Account> findByCompanyWithSecurityLevel(@Param("company") Company company,
+                                                  @Param("maxSecurityLevel") Integer maxSecurityLevel);
+
+    @Query("SELECT a FROM Account a WHERE a.company = :company AND a.active = :active AND (a.securityLevel IS NULL OR a.securityLevel <= :maxSecurityLevel) ORDER BY a.code")
+    List<Account> findByCompanyAndActiveWithSecurityLevel(@Param("company") Company company,
+                                                          @Param("active") boolean active,
+                                                          @Param("maxSecurityLevel") Integer maxSecurityLevel);
+
+    @Query("SELECT a FROM Account a WHERE a.company = :company AND a.parent IS NULL AND (a.securityLevel IS NULL OR a.securityLevel <= :maxSecurityLevel) ORDER BY a.code")
+    List<Account> findRootAccountsByCompanyWithSecurityLevel(@Param("company") Company company,
+                                                              @Param("maxSecurityLevel") Integer maxSecurityLevel);
+
+    @Query("SELECT a FROM Account a WHERE a.parent = :parent AND (a.securityLevel IS NULL OR a.securityLevel <= :maxSecurityLevel) ORDER BY a.code")
+    List<Account> findByParentWithSecurityLevel(@Param("parent") Account parent,
+                                                 @Param("maxSecurityLevel") Integer maxSecurityLevel);
+
+    @Query("SELECT a FROM Account a WHERE a.company.id = :companyId AND a.type = :type AND (a.securityLevel IS NULL OR a.securityLevel <= :maxSecurityLevel) ORDER BY a.code")
+    List<Account> findByCompanyIdAndTypeWithSecurityLevel(@Param("companyId") Long companyId,
+                                                          @Param("type") Account.AccountType type,
+                                                          @Param("maxSecurityLevel") Integer maxSecurityLevel);
+
+    @Query("SELECT a FROM Account a WHERE a.company = :company AND a.bankAccount = true AND a.active = true AND (a.securityLevel IS NULL OR a.securityLevel <= :maxSecurityLevel) ORDER BY a.code")
+    List<Account> findBankAccountsByCompanyWithSecurityLevel(@Param("company") Company company,
+                                                              @Param("maxSecurityLevel") Integer maxSecurityLevel);
 }

@@ -2,12 +2,16 @@ package com.example.application.service;
 
 import com.example.application.domain.Company;
 import com.example.application.domain.TaxCode;
+import com.example.application.domain.User;
 import com.example.application.repository.TaxCodeRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -19,9 +23,11 @@ import java.util.Optional;
 public class TaxCodeService {
 
     private final TaxCodeRepository taxCodeRepository;
+    private final AuditService auditService;
 
-    public TaxCodeService(TaxCodeRepository taxCodeRepository) {
+    public TaxCodeService(TaxCodeRepository taxCodeRepository, AuditService auditService) {
         this.taxCodeRepository = taxCodeRepository;
+        this.auditService = auditService;
     }
 
     /**
@@ -30,11 +36,25 @@ public class TaxCodeService {
      */
     public TaxCode createTaxCode(Company company, String code, String name,
                                   BigDecimal rate, TaxCode.TaxType type) {
+        return createTaxCode(company, code, name, rate, type, null);
+    }
+
+    /**
+     * Creates a new tax code for the given company with audit logging.
+     * @throws IllegalArgumentException if code already exists
+     */
+    public TaxCode createTaxCode(Company company, String code, String name,
+                                  BigDecimal rate, TaxCode.TaxType type, User actor) {
         if (taxCodeRepository.existsByCompanyAndCode(company, code)) {
             throw new IllegalArgumentException("Tax code already exists: " + code);
         }
         TaxCode taxCode = new TaxCode(company, code, name, rate, type);
-        return taxCodeRepository.save(taxCode);
+        taxCode = taxCodeRepository.save(taxCode);
+
+        auditService.logEvent(company, actor, "TAXCODE_CREATED", "TaxCode", taxCode.getId(),
+            "Created tax code: " + code + " - " + name + " @ " + rate);
+
+        return taxCode;
     }
 
     /**
@@ -73,6 +93,50 @@ public class TaxCodeService {
      * Saves a tax code.
      */
     public TaxCode save(TaxCode taxCode) {
+        return save(taxCode, null);
+    }
+
+    /**
+     * Saves a tax code with audit logging for edits.
+     * Captures before/after state for key fields.
+     *
+     * @param taxCode the tax code to save
+     * @param actor the user making the change
+     * @return the saved tax code
+     */
+    public TaxCode save(TaxCode taxCode, User actor) {
+        boolean isNew = taxCode.getId() == null;
+
+        if (!isNew) {
+            // Capture before state for existing tax code
+            TaxCode before = taxCodeRepository.findById(taxCode.getId()).orElse(null);
+            if (before != null) {
+                Map<String, Object> changes = new LinkedHashMap<>();
+                if (!before.getCode().equals(taxCode.getCode())) {
+                    changes.put("code", Map.of("from", before.getCode(), "to", taxCode.getCode()));
+                }
+                if (!before.getName().equals(taxCode.getName())) {
+                    changes.put("name", Map.of("from", before.getName(), "to", taxCode.getName()));
+                }
+                if (before.getRate().compareTo(taxCode.getRate()) != 0) {
+                    changes.put("rate", Map.of("from", before.getRate().toString(), "to", taxCode.getRate().toString()));
+                }
+                if (before.getType() != taxCode.getType()) {
+                    changes.put("type", Map.of("from", before.getType().name(), "to", taxCode.getType().name()));
+                }
+                if (before.isActive() != taxCode.isActive()) {
+                    changes.put("active", Map.of("from", before.isActive(), "to", taxCode.isActive()));
+                }
+
+                if (!changes.isEmpty()) {
+                    TaxCode saved = taxCodeRepository.save(taxCode);
+                    auditService.logEvent(taxCode.getCompany(), actor, "TAXCODE_UPDATED", "TaxCode", taxCode.getId(),
+                        "Updated tax code: " + taxCode.getCode(), changes);
+                    return saved;
+                }
+            }
+        }
+
         return taxCodeRepository.save(taxCode);
     }
 
@@ -80,8 +144,21 @@ public class TaxCodeService {
      * Deactivates a tax code (soft delete).
      */
     public void deactivate(TaxCode taxCode) {
+        deactivate(taxCode, null);
+    }
+
+    /**
+     * Deactivates a tax code with audit logging.
+     *
+     * @param taxCode the tax code to deactivate
+     * @param actor the user making the change
+     */
+    public void deactivate(TaxCode taxCode, User actor) {
         taxCode.setActive(false);
         taxCodeRepository.save(taxCode);
+
+        auditService.logEvent(taxCode.getCompany(), actor, "TAXCODE_DEACTIVATED", "TaxCode", taxCode.getId(),
+            "Deactivated tax code: " + taxCode.getCode());
     }
 
     /**

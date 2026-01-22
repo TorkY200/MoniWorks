@@ -46,7 +46,22 @@ public class ReportingService {
      * Returns a map of account to balance (debits positive, credits negative).
      */
     public TrialBalance generateTrialBalance(Company company, LocalDate startDate, LocalDate endDate) {
-        List<Account> accounts = accountRepository.findByCompanyOrderByCode(company);
+        return generateTrialBalance(company, startDate, endDate, Integer.MAX_VALUE);
+    }
+
+    /**
+     * Generates a Trial Balance with security level filtering.
+     * Accounts with securityLevel > maxSecurityLevel are excluded.
+     *
+     * @param company the company
+     * @param startDate start of reporting period
+     * @param endDate end of reporting period
+     * @param maxSecurityLevel the user's maximum security level
+     * @return the trial balance with restricted accounts filtered out
+     */
+    public TrialBalance generateTrialBalance(Company company, LocalDate startDate, LocalDate endDate,
+                                              int maxSecurityLevel) {
+        List<Account> accounts = accountRepository.findByCompanyWithSecurityLevel(company, maxSecurityLevel);
         List<TrialBalanceLine> lines = new ArrayList<>();
 
         BigDecimal totalDebits = BigDecimal.ZERO;
@@ -77,10 +92,29 @@ public class ReportingService {
      * Generates a Profit & Loss statement for the given date range.
      */
     public ProfitAndLoss generateProfitAndLoss(Company company, LocalDate startDate, LocalDate endDate) {
-        List<Account> incomeAccounts = accountRepository.findByCompanyIdAndType(
-            company.getId(), Account.AccountType.INCOME);
-        List<Account> expenseAccounts = accountRepository.findByCompanyIdAndType(
-            company.getId(), Account.AccountType.EXPENSE);
+        return generateProfitAndLoss(company, startDate, endDate, null, Integer.MAX_VALUE);
+    }
+
+    /**
+     * Generates a Profit & Loss statement with security level filtering.
+     *
+     * @param company the company
+     * @param startDate start of reporting period
+     * @param endDate end of reporting period
+     * @param maxSecurityLevel the user's maximum security level
+     * @return the P&L with restricted accounts filtered out
+     */
+    public ProfitAndLoss generateProfitAndLoss(Company company, LocalDate startDate, LocalDate endDate,
+                                                int maxSecurityLevel) {
+        return generateProfitAndLoss(company, startDate, endDate, null, maxSecurityLevel);
+    }
+
+    private ProfitAndLoss generateProfitAndLossInternal(Company company, LocalDate startDate, LocalDate endDate,
+                                                         Department department, int maxSecurityLevel) {
+        List<Account> incomeAccounts = accountRepository.findByCompanyIdAndTypeWithSecurityLevel(
+            company.getId(), Account.AccountType.INCOME, maxSecurityLevel);
+        List<Account> expenseAccounts = accountRepository.findByCompanyIdAndTypeWithSecurityLevel(
+            company.getId(), Account.AccountType.EXPENSE, maxSecurityLevel);
 
         List<ProfitAndLossLine> incomeLines = new ArrayList<>();
         List<ProfitAndLossLine> expenseLines = new ArrayList<>();
@@ -90,8 +124,13 @@ public class ReportingService {
 
         // Calculate income (credits - debits)
         for (Account account : incomeAccounts) {
-            List<LedgerEntry> entries = ledgerEntryRepository.findByAccountAndDateRange(
-                account, startDate, endDate);
+            List<LedgerEntry> entries;
+            if (department != null) {
+                entries = ledgerEntryRepository.findByAccountAndDateRangeAndDepartment(
+                    account, startDate, endDate, department);
+            } else {
+                entries = ledgerEntryRepository.findByAccountAndDateRange(account, startDate, endDate);
+            }
 
             BigDecimal amount = BigDecimal.ZERO;
             for (LedgerEntry entry : entries) {
@@ -106,68 +145,13 @@ public class ReportingService {
 
         // Calculate expenses (debits - credits)
         for (Account account : expenseAccounts) {
-            List<LedgerEntry> entries = ledgerEntryRepository.findByAccountAndDateRange(
-                account, startDate, endDate);
-
-            BigDecimal amount = BigDecimal.ZERO;
-            for (LedgerEntry entry : entries) {
-                amount = amount.add(entry.getAmountDr()).subtract(entry.getAmountCr());
+            List<LedgerEntry> entries;
+            if (department != null) {
+                entries = ledgerEntryRepository.findByAccountAndDateRangeAndDepartment(
+                    account, startDate, endDate, department);
+            } else {
+                entries = ledgerEntryRepository.findByAccountAndDateRange(account, startDate, endDate);
             }
-
-            if (amount.compareTo(BigDecimal.ZERO) != 0) {
-                expenseLines.add(new ProfitAndLossLine(account, amount));
-                totalExpenses = totalExpenses.add(amount);
-            }
-        }
-
-        BigDecimal netProfit = totalIncome.subtract(totalExpenses);
-
-        return new ProfitAndLoss(startDate, endDate, null, incomeLines, expenseLines,
-            totalIncome, totalExpenses, netProfit);
-    }
-
-    /**
-     * Generates a Profit & Loss statement for the given date range, filtered by department.
-     * If department is null, all entries are included (same as non-filtered version).
-     */
-    public ProfitAndLoss generateProfitAndLoss(Company company, LocalDate startDate,
-                                                LocalDate endDate, Department department) {
-        if (department == null) {
-            // Fall back to non-filtered version
-            return generateProfitAndLoss(company, startDate, endDate);
-        }
-
-        List<Account> incomeAccounts = accountRepository.findByCompanyIdAndType(
-            company.getId(), Account.AccountType.INCOME);
-        List<Account> expenseAccounts = accountRepository.findByCompanyIdAndType(
-            company.getId(), Account.AccountType.EXPENSE);
-
-        List<ProfitAndLossLine> incomeLines = new ArrayList<>();
-        List<ProfitAndLossLine> expenseLines = new ArrayList<>();
-
-        BigDecimal totalIncome = BigDecimal.ZERO;
-        BigDecimal totalExpenses = BigDecimal.ZERO;
-
-        // Calculate income (credits - debits) for department
-        for (Account account : incomeAccounts) {
-            List<LedgerEntry> entries = ledgerEntryRepository.findByAccountAndDateRangeAndDepartment(
-                account, startDate, endDate, department);
-
-            BigDecimal amount = BigDecimal.ZERO;
-            for (LedgerEntry entry : entries) {
-                amount = amount.add(entry.getAmountCr()).subtract(entry.getAmountDr());
-            }
-
-            if (amount.compareTo(BigDecimal.ZERO) != 0) {
-                incomeLines.add(new ProfitAndLossLine(account, amount));
-                totalIncome = totalIncome.add(amount);
-            }
-        }
-
-        // Calculate expenses (debits - credits) for department
-        for (Account account : expenseAccounts) {
-            List<LedgerEntry> entries = ledgerEntryRepository.findByAccountAndDateRangeAndDepartment(
-                account, startDate, endDate, department);
 
             BigDecimal amount = BigDecimal.ZERO;
             for (LedgerEntry entry : entries) {
@@ -187,6 +171,31 @@ public class ReportingService {
     }
 
     /**
+     * Generates a Profit & Loss statement for the given date range, filtered by department.
+     * If department is null, all entries are included (same as non-filtered version).
+     */
+    public ProfitAndLoss generateProfitAndLoss(Company company, LocalDate startDate,
+                                                LocalDate endDate, Department department) {
+        return generateProfitAndLoss(company, startDate, endDate, department, Integer.MAX_VALUE);
+    }
+
+    /**
+     * Generates a Profit & Loss statement with department and security level filtering.
+     *
+     * @param company the company
+     * @param startDate start of reporting period
+     * @param endDate end of reporting period
+     * @param department optional department filter (null = all)
+     * @param maxSecurityLevel the user's maximum security level
+     * @return the P&L with restricted accounts filtered out
+     */
+    public ProfitAndLoss generateProfitAndLoss(Company company, LocalDate startDate,
+                                                LocalDate endDate, Department department,
+                                                int maxSecurityLevel) {
+        return generateProfitAndLossInternal(company, startDate, endDate, department, maxSecurityLevel);
+    }
+
+    /**
      * Generates a Budget vs Actual report for the given budget and date range.
      * Compares budgeted amounts against actual ledger entries.
      * If department is specified, filters both budget lines and actual entries by department.
@@ -194,11 +203,28 @@ public class ReportingService {
     public BudgetVsActual generateBudgetVsActual(Company company, Budget budget,
                                                    LocalDate startDate, LocalDate endDate,
                                                    Department department) {
-        // Get all income and expense accounts that could have budget lines
-        List<Account> incomeAccounts = accountRepository.findByCompanyIdAndType(
-            company.getId(), Account.AccountType.INCOME);
-        List<Account> expenseAccounts = accountRepository.findByCompanyIdAndType(
-            company.getId(), Account.AccountType.EXPENSE);
+        return generateBudgetVsActual(company, budget, startDate, endDate, department, Integer.MAX_VALUE);
+    }
+
+    /**
+     * Generates a Budget vs Actual report with security level filtering.
+     *
+     * @param company the company
+     * @param budget the budget to compare against
+     * @param startDate start of reporting period
+     * @param endDate end of reporting period
+     * @param department optional department filter (null = all)
+     * @param maxSecurityLevel the user's maximum security level
+     * @return the budget vs actual with restricted accounts filtered out
+     */
+    public BudgetVsActual generateBudgetVsActual(Company company, Budget budget,
+                                                   LocalDate startDate, LocalDate endDate,
+                                                   Department department, int maxSecurityLevel) {
+        // Get all income and expense accounts that could have budget lines, filtered by security level
+        List<Account> incomeAccounts = accountRepository.findByCompanyIdAndTypeWithSecurityLevel(
+            company.getId(), Account.AccountType.INCOME, maxSecurityLevel);
+        List<Account> expenseAccounts = accountRepository.findByCompanyIdAndTypeWithSecurityLevel(
+            company.getId(), Account.AccountType.EXPENSE, maxSecurityLevel);
 
         // Get periods that fall within the date range
         List<Period> periods = periodRepository.findByFiscalYearCompanyAndDateRangeOverlap(
@@ -312,12 +338,24 @@ public class ReportingService {
      * Generates a Balance Sheet as of the given date.
      */
     public BalanceSheet generateBalanceSheet(Company company, LocalDate asOfDate) {
-        List<Account> assetAccounts = accountRepository.findByCompanyIdAndType(
-            company.getId(), Account.AccountType.ASSET);
-        List<Account> liabilityAccounts = accountRepository.findByCompanyIdAndType(
-            company.getId(), Account.AccountType.LIABILITY);
-        List<Account> equityAccounts = accountRepository.findByCompanyIdAndType(
-            company.getId(), Account.AccountType.EQUITY);
+        return generateBalanceSheet(company, asOfDate, Integer.MAX_VALUE);
+    }
+
+    /**
+     * Generates a Balance Sheet with security level filtering.
+     *
+     * @param company the company
+     * @param asOfDate the reporting date
+     * @param maxSecurityLevel the user's maximum security level
+     * @return the balance sheet with restricted accounts filtered out
+     */
+    public BalanceSheet generateBalanceSheet(Company company, LocalDate asOfDate, int maxSecurityLevel) {
+        List<Account> assetAccounts = accountRepository.findByCompanyIdAndTypeWithSecurityLevel(
+            company.getId(), Account.AccountType.ASSET, maxSecurityLevel);
+        List<Account> liabilityAccounts = accountRepository.findByCompanyIdAndTypeWithSecurityLevel(
+            company.getId(), Account.AccountType.LIABILITY, maxSecurityLevel);
+        List<Account> equityAccounts = accountRepository.findByCompanyIdAndTypeWithSecurityLevel(
+            company.getId(), Account.AccountType.EQUITY, maxSecurityLevel);
 
         List<BalanceSheetLine> assetLines = calculateBalances(assetAccounts, asOfDate, true);
         List<BalanceSheetLine> liabilityLines = calculateBalances(liabilityAccounts, asOfDate, false);
@@ -700,8 +738,23 @@ public class ReportingService {
      * This is a simplified cashflow report based on direct cash movements.
      */
     public CashflowStatement generateCashflow(Company company, LocalDate startDate, LocalDate endDate) {
-        // Get all bank accounts
-        List<Account> bankAccounts = accountRepository.findBankAccountsByCompany(company);
+        return generateCashflow(company, startDate, endDate, Integer.MAX_VALUE);
+    }
+
+    /**
+     * Generates a Cashflow Statement with security level filtering.
+     *
+     * @param company the company
+     * @param startDate start of reporting period
+     * @param endDate end of reporting period
+     * @param maxSecurityLevel the user's maximum security level
+     * @return the cashflow statement with restricted accounts filtered out
+     */
+    public CashflowStatement generateCashflow(Company company, LocalDate startDate, LocalDate endDate,
+                                               int maxSecurityLevel) {
+        // Get all bank accounts, filtered by security level
+        List<Account> bankAccounts = accountRepository.findBankAccountsByCompanyWithSecurityLevel(
+            company, maxSecurityLevel);
 
         BigDecimal openingBalance = BigDecimal.ZERO;
         BigDecimal closingBalance = BigDecimal.ZERO;

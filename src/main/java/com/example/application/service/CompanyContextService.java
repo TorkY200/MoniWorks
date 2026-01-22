@@ -3,8 +3,10 @@ package com.example.application.service;
 import com.example.application.domain.Company;
 import com.example.application.domain.CompanyMembership;
 import com.example.application.domain.User;
+import com.example.application.domain.UserSecurityLevel;
 import com.example.application.repository.CompanyMembershipRepository;
 import com.example.application.repository.UserRepository;
+import com.example.application.repository.UserSecurityLevelRepository;
 import com.example.application.security.Permissions;
 import com.vaadin.flow.spring.annotation.VaadinSessionScope;
 import org.springframework.security.core.Authentication;
@@ -27,16 +29,20 @@ public class CompanyContextService {
     private final CompanyService companyService;
     private final UserRepository userRepository;
     private final CompanyMembershipRepository membershipRepository;
+    private final UserSecurityLevelRepository securityLevelRepository;
     private Company currentCompany;
     private User currentUser;
     private CompanyMembership currentMembership;
+    private Integer cachedSecurityLevel;
 
     public CompanyContextService(CompanyService companyService,
                                   UserRepository userRepository,
-                                  CompanyMembershipRepository membershipRepository) {
+                                  CompanyMembershipRepository membershipRepository,
+                                  UserSecurityLevelRepository securityLevelRepository) {
         this.companyService = companyService;
         this.userRepository = userRepository;
         this.membershipRepository = membershipRepository;
+        this.securityLevelRepository = securityLevelRepository;
     }
 
     /**
@@ -119,6 +125,7 @@ public class CompanyContextService {
     public void clearUserCache() {
         currentUser = null;
         currentMembership = null;
+        cachedSecurityLevel = null;
     }
 
     /**
@@ -188,5 +195,46 @@ public class CompanyContextService {
     public String getCurrentRoleName() {
         CompanyMembership membership = getCurrentMembership();
         return membership != null ? membership.getRole().getName() : null;
+    }
+
+    /**
+     * Gets the current user's maximum security level for the current company.
+     * Accounts with security_level > this value should be hidden from the user.
+     *
+     * @return the max security level (0 if not set, Integer.MAX_VALUE for admins)
+     */
+    public int getCurrentSecurityLevel() {
+        // Admins can see all accounts regardless of security level
+        if (hasPermission(Permissions.ADMIN)) {
+            return Integer.MAX_VALUE;
+        }
+
+        if (cachedSecurityLevel != null) {
+            return cachedSecurityLevel;
+        }
+
+        User user = getCurrentUser();
+        Company company = getCurrentCompany();
+        if (user == null || company == null) {
+            cachedSecurityLevel = 0;
+            return 0;
+        }
+
+        cachedSecurityLevel = securityLevelRepository
+            .getMaxLevelByUserIdAndCompanyId(user.getId(), company.getId())
+            .orElse(0);
+
+        return cachedSecurityLevel;
+    }
+
+    /**
+     * Checks if the current user can view an account based on its security level.
+     *
+     * @param accountSecurityLevel the account's security level (null treated as 0)
+     * @return true if the user can view the account
+     */
+    public boolean canViewAccountWithSecurityLevel(Integer accountSecurityLevel) {
+        int effectiveLevel = accountSecurityLevel != null ? accountSecurityLevel : 0;
+        return effectiveLevel <= getCurrentSecurityLevel();
     }
 }

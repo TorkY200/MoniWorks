@@ -16,6 +16,7 @@ import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
@@ -87,7 +88,8 @@ class ReportingServiceTest {
         LocalDate startDate = LocalDate.of(2024, 4, 1);
         LocalDate endDate = LocalDate.of(2024, 4, 30);
 
-        when(accountRepository.findByCompanyOrderByCode(company))
+        // Mock the security-level filtered query (used by generateTrialBalance internally)
+        when(accountRepository.findByCompanyWithSecurityLevel(eq(company), anyInt()))
             .thenReturn(Arrays.asList(bankAccount, revenueAccount, expenseAccount));
 
         // Bank: 10,000 debit (asset)
@@ -125,7 +127,8 @@ class ReportingServiceTest {
         // Arrange
         LocalDate endDate = LocalDate.of(2024, 4, 30);
 
-        when(accountRepository.findByCompanyOrderByCode(company))
+        // Mock the security-level filtered query
+        when(accountRepository.findByCompanyWithSecurityLevel(eq(company), anyInt()))
             .thenReturn(Arrays.asList(bankAccount, equityAccount));
 
         // Bank: 5,000 debit
@@ -156,18 +159,21 @@ class ReportingServiceTest {
         LocalDate startDate = LocalDate.of(2024, 4, 1);
         LocalDate endDate = LocalDate.of(2024, 4, 30);
 
-        when(accountRepository.findByCompanyIdAndType(company.getId(), Account.AccountType.INCOME))
+        // Mock the security-level filtered queries (used by generateProfitAndLoss internally)
+        when(accountRepository.findByCompanyIdAndTypeWithSecurityLevel(
+                eq(company.getId()), eq(Account.AccountType.INCOME), anyInt()))
             .thenReturn(Collections.singletonList(revenueAccount));
-        when(accountRepository.findByCompanyIdAndType(company.getId(), Account.AccountType.EXPENSE))
+        when(accountRepository.findByCompanyIdAndTypeWithSecurityLevel(
+                eq(company.getId()), eq(Account.AccountType.EXPENSE), anyInt()))
             .thenReturn(Collections.singletonList(expenseAccount));
 
-        // Revenue entries: 10,000 credit
+        // Revenue entries: empty for this test
         when(ledgerEntryRepository.findByAccountAndDateRange(eq(revenueAccount), any(), any()))
-            .thenReturn(Collections.emptyList()); // Would return actual entries in real test
+            .thenReturn(Collections.emptyList());
 
-        // Expense entries: 3,000 debit
+        // Expense entries: empty for this test
         when(ledgerEntryRepository.findByAccountAndDateRange(eq(expenseAccount), any(), any()))
-            .thenReturn(Collections.emptyList()); // Would return actual entries in real test
+            .thenReturn(Collections.emptyList());
 
         // Act
         ReportingService.ProfitAndLoss pnl =
@@ -184,11 +190,15 @@ class ReportingServiceTest {
         // Arrange
         LocalDate asOfDate = LocalDate.of(2024, 4, 30);
 
-        when(accountRepository.findByCompanyIdAndType(company.getId(), Account.AccountType.ASSET))
+        // Mock the security-level filtered queries (used by generateBalanceSheet internally)
+        when(accountRepository.findByCompanyIdAndTypeWithSecurityLevel(
+                eq(company.getId()), eq(Account.AccountType.ASSET), anyInt()))
             .thenReturn(Collections.singletonList(bankAccount));
-        when(accountRepository.findByCompanyIdAndType(company.getId(), Account.AccountType.LIABILITY))
+        when(accountRepository.findByCompanyIdAndTypeWithSecurityLevel(
+                eq(company.getId()), eq(Account.AccountType.LIABILITY), anyInt()))
             .thenReturn(Collections.singletonList(apAccount));
-        when(accountRepository.findByCompanyIdAndType(company.getId(), Account.AccountType.EQUITY))
+        when(accountRepository.findByCompanyIdAndTypeWithSecurityLevel(
+                eq(company.getId()), eq(Account.AccountType.EQUITY), anyInt()))
             .thenReturn(Collections.singletonList(equityAccount));
 
         // Bank: 10,000 debit balance (asset positive)
@@ -225,7 +235,8 @@ class ReportingServiceTest {
         // Arrange
         LocalDate asOfDate = LocalDate.of(2024, 4, 30);
 
-        when(accountRepository.findByCompanyIdAndType(any(), any()))
+        // Mock the security-level filtered queries to return empty lists
+        when(accountRepository.findByCompanyIdAndTypeWithSecurityLevel(any(), any(), anyInt()))
             .thenReturn(Collections.emptyList());
 
         // Act

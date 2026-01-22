@@ -8,7 +8,10 @@ import com.example.application.repository.ContactRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -122,6 +125,67 @@ public class ContactService {
      * Saves a contact.
      */
     public Contact save(Contact contact) {
+        return save(contact, null);
+    }
+
+    /**
+     * Saves a contact with audit logging for edits.
+     * Captures before/after state for key fields.
+     *
+     * @param contact the contact to save
+     * @param actor the user making the change
+     * @return the saved contact
+     */
+    public Contact save(Contact contact, User actor) {
+        boolean isNew = contact.getId() == null;
+
+        if (!isNew) {
+            // Capture before state for existing contact
+            Contact before = contactRepository.findById(contact.getId()).orElse(null);
+            if (before != null) {
+                Map<String, Object> changes = new LinkedHashMap<>();
+                if (!before.getCode().equals(contact.getCode())) {
+                    changes.put("code", Map.of("from", before.getCode(), "to", contact.getCode()));
+                }
+                if (!before.getName().equals(contact.getName())) {
+                    changes.put("name", Map.of("from", before.getName(), "to", contact.getName()));
+                }
+                if (before.getType() != contact.getType()) {
+                    changes.put("type", Map.of("from", before.getType().name(), "to", contact.getType().name()));
+                }
+                if (!Objects.equals(before.getEmail(), contact.getEmail())) {
+                    changes.put("email", Map.of(
+                        "from", before.getEmail() != null ? before.getEmail() : "",
+                        "to", contact.getEmail() != null ? contact.getEmail() : ""));
+                }
+                if (!Objects.equals(before.getPhone(), contact.getPhone())) {
+                    changes.put("phone", Map.of(
+                        "from", before.getPhone() != null ? before.getPhone() : "",
+                        "to", contact.getPhone() != null ? contact.getPhone() : ""));
+                }
+                if (!Objects.equals(before.getCategory(), contact.getCategory())) {
+                    changes.put("category", Map.of(
+                        "from", before.getCategory() != null ? before.getCategory() : "",
+                        "to", contact.getCategory() != null ? contact.getCategory() : ""));
+                }
+                if (before.isActive() != contact.isActive()) {
+                    changes.put("active", Map.of("from", before.isActive(), "to", contact.isActive()));
+                }
+                if (!Objects.equals(before.getTaxOverrideCode(), contact.getTaxOverrideCode())) {
+                    changes.put("taxOverrideCode", Map.of(
+                        "from", before.getTaxOverrideCode() != null ? before.getTaxOverrideCode() : "",
+                        "to", contact.getTaxOverrideCode() != null ? contact.getTaxOverrideCode() : ""));
+                }
+
+                if (!changes.isEmpty()) {
+                    Contact saved = contactRepository.save(contact);
+                    auditService.logEvent(contact.getCompany(), actor, "CONTACT_UPDATED", "Contact", contact.getId(),
+                        "Updated contact: " + contact.getCode(), changes);
+                    return saved;
+                }
+            }
+        }
+
         return contactRepository.save(contact);
     }
 

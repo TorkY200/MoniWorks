@@ -2,11 +2,15 @@ package com.example.application.service;
 
 import com.example.application.domain.Company;
 import com.example.application.domain.Product;
+import com.example.application.domain.User;
 import com.example.application.repository.ProductRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -113,6 +117,73 @@ public class ProductService {
      * Saves a product.
      */
     public Product save(Product product) {
+        return save(product, null);
+    }
+
+    /**
+     * Saves a product with audit logging for edits.
+     * Captures before/after state for key fields.
+     *
+     * @param product the product to save
+     * @param actor the user making the change
+     * @return the saved product
+     */
+    public Product save(Product product, User actor) {
+        boolean isNew = product.getId() == null;
+
+        if (!isNew) {
+            // Capture before state for existing product
+            Product before = productRepository.findById(product.getId()).orElse(null);
+            if (before != null) {
+                Map<String, Object> changes = new LinkedHashMap<>();
+                if (!before.getCode().equals(product.getCode())) {
+                    changes.put("code", Map.of("from", before.getCode(), "to", product.getCode()));
+                }
+                if (!before.getName().equals(product.getName())) {
+                    changes.put("name", Map.of("from", before.getName(), "to", product.getName()));
+                }
+                if (!Objects.equals(before.getDescription(), product.getDescription())) {
+                    changes.put("description", Map.of(
+                        "from", before.getDescription() != null ? before.getDescription() : "",
+                        "to", product.getDescription() != null ? product.getDescription() : ""));
+                }
+                if (!Objects.equals(before.getCategory(), product.getCategory())) {
+                    changes.put("category", Map.of(
+                        "from", before.getCategory() != null ? before.getCategory() : "",
+                        "to", product.getCategory() != null ? product.getCategory() : ""));
+                }
+                if ((before.getSellPrice() != null && product.getSellPrice() != null &&
+                     before.getSellPrice().compareTo(product.getSellPrice()) != 0) ||
+                    (before.getSellPrice() == null) != (product.getSellPrice() == null)) {
+                    changes.put("sellPrice", Map.of(
+                        "from", before.getSellPrice() != null ? before.getSellPrice().toString() : "",
+                        "to", product.getSellPrice() != null ? product.getSellPrice().toString() : ""));
+                }
+                if ((before.getBuyPrice() != null && product.getBuyPrice() != null &&
+                     before.getBuyPrice().compareTo(product.getBuyPrice()) != 0) ||
+                    (before.getBuyPrice() == null) != (product.getBuyPrice() == null)) {
+                    changes.put("buyPrice", Map.of(
+                        "from", before.getBuyPrice() != null ? before.getBuyPrice().toString() : "",
+                        "to", product.getBuyPrice() != null ? product.getBuyPrice().toString() : ""));
+                }
+                if (before.isActive() != product.isActive()) {
+                    changes.put("active", Map.of("from", before.isActive(), "to", product.isActive()));
+                }
+                if (!Objects.equals(before.getTaxCode(), product.getTaxCode())) {
+                    changes.put("taxCode", Map.of(
+                        "from", before.getTaxCode() != null ? before.getTaxCode() : "",
+                        "to", product.getTaxCode() != null ? product.getTaxCode() : ""));
+                }
+
+                if (!changes.isEmpty()) {
+                    Product saved = productRepository.save(product);
+                    auditService.logEvent(product.getCompany(), actor, "PRODUCT_UPDATED", "Product", product.getId(),
+                        "Updated product: " + product.getCode(), changes);
+                    return saved;
+                }
+            }
+        }
+
         return productRepository.save(product);
     }
 

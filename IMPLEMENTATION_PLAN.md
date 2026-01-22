@@ -22,7 +22,8 @@
 - **Phase 14 SavedView Grid Integration COMPLETE** - Tag: 0.2.6
 - **Phase 15 User & Permission Management COMPLETE** - Tag: 0.2.7
 - **Phase 16 Cashflow Report & Quality Tooling COMPLETE** - Tag: 0.2.8
-- All 70 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, ApplicationTest: 1)
+- **Phase 17 Account Security Level & Audit Logging COMPLETE** - Tag: 0.2.9
+- All 71 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, ApplicationTest: 1)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView
 - Database configured: H2 for development, PostgreSQL for production
 - Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql, V14__statement_runs.sql, V15__additional_permissions.sql
@@ -459,6 +460,51 @@ Per specs, Release 1 must deliver:
   - Returns exit code 1 if markers found (for CI integration)
   - Added to AGENTS.md validation commands
 
+### Phase 17: Account Security Level & Audit Logging (COMPLETE) - Tag: 0.2.9
+- [x] UserSecurityLevel entity and migration (spec 02)
+  - Created UserSecurityLevel entity with user, company, maxLevel
+  - Created V16__user_security_level.sql migration
+  - Created UserSecurityLevelRepository with query methods
+  - Security levels work hierarchically: level 0 sees unrestricted accounts, level 1+ sees more
+  - Admins have unlimited access (Integer.MAX_VALUE security level)
+- [x] Account security level filtering in repository queries (spec 02)
+  - Added findByCompanyWithSecurityLevel to AccountRepository
+  - Added findByCompanyAndActiveWithSecurityLevel
+  - Added findRootAccountsByCompanyWithSecurityLevel
+  - Added findByParentWithSecurityLevel
+  - Added findByCompanyIdAndTypeWithSecurityLevel
+  - Added findBankAccountsByCompanyWithSecurityLevel
+  - All queries filter out accounts where securityLevel > user's maxLevel
+- [x] Security level filtering in AccountService
+  - Added findByCompanyWithSecurityLevel method
+  - Added findActiveByCompanyWithSecurityLevel method
+  - Added findRootAccountsWithSecurityLevel method
+  - Added findChildrenWithSecurityLevel method
+  - Added findByTypeWithSecurityLevel method
+- [x] CompanyContextService security level support (spec 02)
+  - Added getCurrentSecurityLevel() method that returns user's max level
+  - Admins return Integer.MAX_VALUE to see all accounts
+  - Added canViewAccountWithSecurityLevel() helper method
+  - Caches security level per session for performance
+- [x] Security level filtering in ReportingService (spec 02)
+  - Added generateTrialBalance with maxSecurityLevel parameter
+  - Added generateProfitAndLoss with maxSecurityLevel parameter
+  - Added generateBalanceSheet with maxSecurityLevel parameter
+  - Added generateCashflow with maxSecurityLevel parameter
+  - Added generateBudgetVsActual with maxSecurityLevel parameter
+  - Reports exclude accounts above user's security level
+- [x] Dashboard security level filtering (spec 02, spec 13)
+  - Cash Balance tile filters bank accounts by security level
+  - This Month tile uses security-filtered P&L report
+  - Users only see data for accounts they have access to
+- [x] Master data edit audit logging (spec 14)
+  - AccountService: logs ACCOUNT_CREATED, ACCOUNT_UPDATED with before/after changes, ACCOUNT_DEACTIVATED
+  - TaxCodeService: logs TAXCODE_CREATED, TAXCODE_UPDATED with before/after changes, TAXCODE_DEACTIVATED
+  - ContactService: logs CONTACT_UPDATED with before/after changes (CREATED and DEACTIVATED already existed)
+  - ProductService: logs PRODUCT_UPDATED with before/after changes (CREATED and DEACTIVATED already existed)
+  - Changes tracked include: code, name, type, active, and entity-specific fields
+- [x] Updated ReportingServiceTest to use new security-filtered mocks
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -502,6 +548,8 @@ Per specs, Release 1 must deliver:
 - Company-scoped permission checks use CompanyPermissionEvaluator.hasCompanyPermission() via @PreAuthorize
 - Vaadin views can use @RolesAllowed for role-based access control at the view level
 - CompanyContextService.hasPermission() provides convenient permission checking in UI components
+- AccountRepository now has security-level filtered variants of all queries - use WithSecurityLevel suffix methods when user context matters
+- AuditService.logEvent with changes Map parameter serializes before/after values to detailsJson for tracking field changes
 
 ## Technical Notes
 - Build: `./mvnw compile`

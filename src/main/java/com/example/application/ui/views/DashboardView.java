@@ -102,12 +102,16 @@ public class DashboardView extends VerticalLayout {
 
     /**
      * Creates the Cash Balance tile showing current bank account balances.
+     * Respects the user's security level - restricted bank accounts are not shown.
      */
     private Div createCashBalanceTile(Company company) {
         Div tile = createTileBase("Cash Balance", "var(--lumo-primary-color)");
         VerticalLayout content = (VerticalLayout) tile.getComponentAt(1);
 
-        List<Account> bankAccounts = accountRepository.findBankAccountsByCompany(company);
+        // Filter bank accounts by user's security level
+        int securityLevel = companyContextService.getCurrentSecurityLevel();
+        List<Account> bankAccounts = accountRepository.findBankAccountsByCompanyWithSecurityLevel(
+            company, securityLevel);
         LocalDate today = LocalDate.now();
 
         if (bankAccounts.isEmpty()) {
@@ -196,17 +200,19 @@ public class DashboardView extends VerticalLayout {
 
     /**
      * Creates the Income Trend tile showing recent month's income vs expenses.
+     * Respects the user's security level - restricted accounts are not included.
      */
     private Div createIncomeTrendTile(Company company) {
         Div tile = createTileBase("This Month", "var(--lumo-success-color)");
         VerticalLayout content = (VerticalLayout) tile.getComponentAt(1);
 
-        // Calculate current month's P&L
+        // Calculate current month's P&L, filtered by user's security level
         LocalDate today = LocalDate.now();
         LocalDate monthStart = today.withDayOfMonth(1);
 
+        int securityLevel = companyContextService.getCurrentSecurityLevel();
         ReportingService.ProfitAndLoss pnl = reportingService.generateProfitAndLoss(
-            company, monthStart, today);
+            company, monthStart, today, securityLevel);
 
         // Income row
         HorizontalLayout incomeRow = createMetricRow("Income", pnl.totalIncome(), "var(--lumo-success-color)");
