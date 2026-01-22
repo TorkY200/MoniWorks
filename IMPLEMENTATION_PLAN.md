@@ -10,14 +10,14 @@
 - **Phase 6 A/R and A/P COMPLETE** - Tag: 0.1.2
 - **Phase 7 Budgeting & Departments COMPLETE** - Tag: 0.1.4
 - **Phase 8 Recurring Transactions COMPLETE** - Tag: 0.1.5
-- **Phase 9 Report Export IN PROGRESS** - Tag: 0.1.6
-- All 37 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, ApplicationTest: 1)
-- Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog
+- **Phase 9 Report Export & Search COMPLETE** - Tag: 0.1.7
+- All 49 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, ApplicationTest: 1)
+- Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView
 - Database configured: H2 for development, PostgreSQL for production
-- Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql
-- All repository interfaces created (37 repositories)
-- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService, SalesInvoiceService, ReceivableAllocationService, SupplierBillService, PayableAllocationService, PaymentRunService, RemittanceAdviceService, DepartmentService, BudgetService, KPIService, RecurringTemplateService, ReportExportService
-- Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView, AuditEventsView, ContactsView, ProductsView, SalesInvoicesView, SupplierBillsView, DepartmentsView, BudgetsView, KPIsView, RecurringTemplatesView
+- Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql
+- All repository interfaces created (38 repositories)
+- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService, SalesInvoiceService, ReceivableAllocationService, SupplierBillService, PayableAllocationService, PaymentRunService, RemittanceAdviceService, DepartmentService, BudgetService, KPIService, RecurringTemplateService, ReportExportService, GlobalSearchService, SavedViewService
+- Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView, AuditEventsView, ContactsView, ProductsView, SalesInvoicesView, SupplierBillsView, DepartmentsView, BudgetsView, KPIsView, RecurringTemplatesView, GlobalSearchView
 - Security configuration with SecurityConfig and UserDetailsServiceImpl (using VaadinSecurityConfigurer API)
 
 ## Release 1 (SLC) - Target Features
@@ -206,7 +206,7 @@ Per specs, Release 1 must deliver:
     - Create template dialog with JSON payload editor
   - Added Recurring navigation to MainLayout with TIME_FORWARD icon
 
-### Phase 9: Report Export & Search (IN PROGRESS) - Tag: 0.1.6
+### Phase 9: Report Export & Search (COMPLETE) - Tag: 0.1.7
 - [x] PDF/Excel export for all reports (spec 13)
   - Added Apache POI dependency (poi-ooxml 5.2.5) for Excel export
   - Created ReportExportService with PDF and Excel export methods for:
@@ -217,9 +217,29 @@ Per specs, Release 1 must deliver:
   - Updated ReportsView with export buttons (PDF and Excel) for all report tabs
   - Export buttons appear after generating a report
   - Uses StreamResource and Anchor for browser download functionality
-- [ ] Global search with query expressions (spec 15)
-- [ ] Saved views and grid customization (spec 15)
+- [x] Global search with query expressions (spec 15)
+  - Created GlobalSearchService with query expression parsing
+  - Supports filter expressions: type:, status:, amount>, amount<, older_than:, newer_than:
+  - Searches across transactions, contacts, products, accounts, invoices, bills
+  - All searches are company-scoped for tenant isolation
+  - Created GlobalSearchResult DTO with entity-type-specific factory methods
+  - Added global search field in MainLayout header
+  - Created GlobalSearchView with searchable results grid
+  - Results show type, title/subtitle, date, amount, and status with badges
+  - Click on result navigates to entity view
+  - Search tips help section explains query syntax
+  - Added 12 unit tests for query parsing and search behavior
+- [x] Saved views (spec 15)
+  - Created SavedView entity with columns, filters, sort configuration stored as JSON
+  - Supports entity types: TRANSACTION, CONTACT, PRODUCT, ACCOUNT, SALES_INVOICE, SUPPLIER_BILL, RECURRING_TEMPLATE
+  - Created V13__saved_views_search.sql migration
+  - Created SavedViewRepository and SavedViewService with full CRUD
+  - Default view support per entity type per user
+  - Audit logging for view creation, update, rename, delete
+
+### Phase 10: Email & Polish (TODO)
 - [ ] Email sending integration (spec 13)
+- [ ] Grid customization UI (column reorder, show/hide, save views)
 
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
@@ -247,6 +267,10 @@ Per specs, Release 1 must deliver:
 - When using both OpenPDF and Apache POI, fully qualify Row/Cell/Font classes to avoid ambiguity (use org.apache.poi.ss.usermodel.Row, etc.)
 - Apache POI (poi-ooxml) used for Excel export - provides XSSFWorkbook for .xlsx format
 - StreamResource with Anchor and download attribute creates browser download functionality in Vaadin
+- LumoUtility.FontStyle may not be available in all Vaadin versions - use inline style instead: element.getStyle().set("font-style", "italic")
+- When creating Vaadin views with listeners referencing other UI components, ensure those components are initialized before the listener is defined to avoid "variable might not have been initialized" errors
+- TransactionLine uses amount/direction (DEBIT/CREDIT) pattern, not separate debitAmount/creditAmount fields
+- SalesInvoiceRepository uses findByCompanyOrderByIssueDateDescInvoiceNumberDesc, SupplierBillRepository uses findByCompanyOrderByBillDateDescBillNumberDesc
 
 ## Technical Notes
 - Build: `./mvnw compile`

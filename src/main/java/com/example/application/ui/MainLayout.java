@@ -7,6 +7,7 @@ import com.example.application.ui.views.ContactsView;
 import com.example.application.ui.views.DashboardView;
 import com.example.application.ui.views.BudgetsView;
 import com.example.application.ui.views.DepartmentsView;
+import com.example.application.ui.views.GlobalSearchView;
 import com.example.application.ui.views.GstReturnsView;
 import com.example.application.ui.views.KPIsView;
 import com.example.application.ui.views.PeriodsView;
@@ -17,6 +18,8 @@ import com.example.application.ui.views.SalesInvoicesView;
 import com.example.application.ui.views.SupplierBillsView;
 import com.example.application.ui.views.TaxCodesView;
 import com.example.application.ui.views.TransactionsView;
+import com.vaadin.flow.component.Key;
+import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.applayout.AppLayout;
 import com.vaadin.flow.component.applayout.DrawerToggle;
 import com.vaadin.flow.component.html.H1;
@@ -28,22 +31,52 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.Scroller;
 import com.vaadin.flow.component.sidenav.SideNav;
 import com.vaadin.flow.component.sidenav.SideNavItem;
+import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.router.Layout;
 import com.vaadin.flow.server.auth.AnonymousAllowed;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import jakarta.annotation.security.PermitAll;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+
 /**
- * Main application layout with side navigation.
- * Uses Vaadin AppLayout with a drawer for navigation and header for branding.
+ * Main application layout with side navigation and global search.
+ * Uses Vaadin AppLayout with a drawer for navigation and header for branding + search.
  */
 @Layout
 @PermitAll
 public class MainLayout extends AppLayout {
 
+    private final TextField globalSearchField;
+
     public MainLayout() {
+        globalSearchField = createGlobalSearchField();
         createHeader();
         createDrawer();
+    }
+
+    private TextField createGlobalSearchField() {
+        TextField searchField = new TextField();
+        searchField.setPlaceholder("Search (Ctrl+K)");
+        searchField.setPrefixComponent(VaadinIcon.SEARCH.create());
+        searchField.setWidth("300px");
+        searchField.setClearButtonVisible(true);
+        searchField.addClassNames(LumoUtility.Margin.Left.AUTO);
+
+        // Navigate to search view on Enter
+        searchField.addKeyDownListener(Key.ENTER, e -> {
+            String query = searchField.getValue();
+            if (query != null && !query.isBlank()) {
+                String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+                UI.getCurrent().navigate("search?q=" + encodedQuery);
+                searchField.clear();
+            } else {
+                UI.getCurrent().navigate(GlobalSearchView.class);
+            }
+        });
+
+        return searchField;
     }
 
     private void createHeader() {
@@ -53,11 +86,18 @@ public class MainLayout extends AppLayout {
             LumoUtility.Margin.MEDIUM
         );
 
-        Header header = new Header(new DrawerToggle(), logo);
+        HorizontalLayout headerContent = new HorizontalLayout();
+        headerContent.setWidthFull();
+        headerContent.setAlignItems(FlexComponent.Alignment.CENTER);
+        headerContent.add(new DrawerToggle(), logo, globalSearchField);
+        headerContent.expand(globalSearchField);
+
+        Header header = new Header(headerContent);
         header.addClassNames(
             LumoUtility.Display.FLEX,
             LumoUtility.AlignItems.CENTER,
-            LumoUtility.Padding.End.MEDIUM
+            LumoUtility.Padding.End.MEDIUM,
+            LumoUtility.Width.FULL
         );
 
         addToNavbar(header);
@@ -100,6 +140,8 @@ public class MainLayout extends AppLayout {
             VaadinIcon.CALENDAR.create()));
         nav.addItem(new SideNavItem("Audit Trail", AuditEventsView.class,
             VaadinIcon.LIST.create()));
+        nav.addItem(new SideNavItem("Search", GlobalSearchView.class,
+            VaadinIcon.SEARCH.create()));
 
         Scroller scroller = new Scroller(nav);
         scroller.addClassNames(LumoUtility.Padding.SMALL);
