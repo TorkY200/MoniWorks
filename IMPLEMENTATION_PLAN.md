@@ -13,7 +13,7 @@
 - Database configured: H2 for development, PostgreSQL for production
 - Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql
 - All repository interfaces created (31 repositories)
-- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService, SalesInvoiceService, ReceivableAllocationService, SupplierBillService, PayableAllocationService, PaymentRunService
+- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService, SalesInvoiceService, ReceivableAllocationService, SupplierBillService, PayableAllocationService, PaymentRunService, RemittanceAdviceService
 - Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView, AuditEventsView, ContactsView, ProductsView, SalesInvoicesView, SupplierBillsView
 - Security configuration with SecurityConfig and UserDetailsServiceImpl (using VaadinSecurityConfigurer API)
 
@@ -99,7 +99,7 @@ Per specs, Release 1 must deliver:
   - Detail view showing pricing, tax/accounts, other info, sticky note display
   - Added Products navigation to MainLayout with PACKAGE icon
 
-### Phase 6: Release 2 - A/R and A/P (COMPLETE) - Tag: 0.1.1
+### Phase 6: Release 2 - A/R and A/P (COMPLETE) - Tag: 0.1.2
 - [x] Accounts Receivable (spec 09)
   - Created SalesInvoice and SalesInvoiceLine entities
   - SalesInvoice with invoiceNumber, contactId, issueDate, dueDate, status (DRAFT/ISSUED/VOID)
@@ -126,8 +126,16 @@ Per specs, Release 1 must deliver:
   - Created SupplierBillsView with master-detail layout, status filtering, line item management
   - Bill posting creates balanced journal entries (AP credit, Expense debit, GST paid debit)
   - Added Supplier Bills navigation to MainLayout with RECORDS icon
-- [ ] Dashboard Overdue AR/AP tiles
-- [ ] Remittance advice PDF generation (PaymentRun output)
+- [x] Dashboard Overdue AR/AP tiles
+  - Added Overdue Receivables tile showing total overdue AR balance and up to 3 oldest overdue invoices
+  - Added Overdue Payables tile showing total overdue AP balance and up to 3 oldest overdue bills
+  - Uses existing repository methods: SalesInvoiceRepository.sumOverdueByCompany, SupplierBillRepository.sumOverdueByCompany
+- [x] Remittance advice PDF generation (PaymentRun output)
+  - Added OpenPDF library dependency for PDF generation
+  - Created RemittanceAdviceService that generates professional PDFs
+  - Each supplier gets their own page with company/supplier info, bill details table, and payment total
+  - PDF automatically generated when PaymentRun is completed and attached to the run
+  - Added PAYMENT_RUN to AttachmentLink.EntityType enum
 
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
@@ -142,6 +150,8 @@ Per specs, Release 1 must deliver:
 - AccountService.findByType takes companyId (Long), not Company object
 - REGEXP is not supported in HQL/JPQL - use application-side filtering for regex-like matching
 - TransactionService.createTransaction requires description parameter
+- OpenPDF (com.github.librepdf:openpdf) used for PDF generation - provides Document, PdfWriter, PdfPTable classes
+- When adding new services that need circular dependencies (like RemittanceAdviceService in PaymentRunService), ensure constructor injection order
 
 ## Technical Notes
 - Build: `./mvnw compile`

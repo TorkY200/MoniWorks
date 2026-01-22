@@ -43,6 +43,7 @@ public class PaymentRunService {
     private final PostingService postingService;
     private final PayableAllocationService allocationService;
     private final AuditService auditService;
+    private final RemittanceAdviceService remittanceAdviceService;
     private final ObjectMapper objectMapper;
 
     // Default AP account code
@@ -55,7 +56,8 @@ public class PaymentRunService {
                              TransactionService transactionService,
                              PostingService postingService,
                              PayableAllocationService allocationService,
-                             AuditService auditService) {
+                             AuditService auditService,
+                             RemittanceAdviceService remittanceAdviceService) {
         this.paymentRunRepository = paymentRunRepository;
         this.billRepository = billRepository;
         this.billService = billService;
@@ -64,6 +66,7 @@ public class PaymentRunService {
         this.postingService = postingService;
         this.allocationService = allocationService;
         this.auditService = auditService;
+        this.remittanceAdviceService = remittanceAdviceService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -213,10 +216,30 @@ public class PaymentRunService {
         savePaymentItems(run, items);
         run = paymentRunRepository.save(run);
 
+        // Generate remittance advice PDF
+        List<PaymentRunBill> runBills = getRunBillsInternal(items);
+        Attachment remittancePdf = remittanceAdviceService.generateRemittanceAdvice(run, runBills, actor);
+        run.setOutputAttachment(remittancePdf);
+        run = paymentRunRepository.save(run);
+
         auditService.logEvent(company, actor, "PAYMENT_RUN_COMPLETED", "PaymentRun",
-            run.getId(), "Completed payment run with " + items.size() + " bills");
+            run.getId(), "Completed payment run with " + items.size() + " bills, generated remittance advice");
 
         return run;
+    }
+
+    /**
+     * Internal method to get run bills from payment items (avoiding transaction issues).
+     */
+    private List<PaymentRunBill> getRunBillsInternal(List<PaymentItem> items) {
+        List<PaymentRunBill> result = new ArrayList<>();
+        for (PaymentItem item : items) {
+            Optional<SupplierBill> bill = billRepository.findById(item.billId);
+            if (bill.isPresent()) {
+                result.add(new PaymentRunBill(bill.get(), item.amount));
+            }
+        }
+        return result;
     }
 
     /**

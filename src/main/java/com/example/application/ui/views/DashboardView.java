@@ -2,8 +2,12 @@ package com.example.application.ui.views;
 
 import com.example.application.domain.Account;
 import com.example.application.domain.Company;
+import com.example.application.domain.SalesInvoice;
+import com.example.application.domain.SupplierBill;
 import com.example.application.repository.AccountRepository;
 import com.example.application.repository.LedgerEntryRepository;
+import com.example.application.repository.SalesInvoiceRepository;
+import com.example.application.repository.SupplierBillRepository;
 import com.example.application.repository.TaxLineRepository;
 import com.example.application.service.CompanyContextService;
 import com.example.application.service.ReportingService;
@@ -41,6 +45,8 @@ public class DashboardView extends VerticalLayout {
     private final LedgerEntryRepository ledgerEntryRepository;
     private final TaxLineRepository taxLineRepository;
     private final ReportingService reportingService;
+    private final SalesInvoiceRepository salesInvoiceRepository;
+    private final SupplierBillRepository supplierBillRepository;
 
     private final NumberFormat currencyFormat;
     private final DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("d MMM yyyy");
@@ -49,12 +55,16 @@ public class DashboardView extends VerticalLayout {
                          AccountRepository accountRepository,
                          LedgerEntryRepository ledgerEntryRepository,
                          TaxLineRepository taxLineRepository,
-                         ReportingService reportingService) {
+                         ReportingService reportingService,
+                         SalesInvoiceRepository salesInvoiceRepository,
+                         SupplierBillRepository supplierBillRepository) {
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.taxLineRepository = taxLineRepository;
         this.reportingService = reportingService;
+        this.salesInvoiceRepository = salesInvoiceRepository;
+        this.supplierBillRepository = supplierBillRepository;
 
         // Set up currency format for NZ
         this.currencyFormat = NumberFormat.getCurrencyInstance(new Locale("en", "NZ"));
@@ -82,7 +92,9 @@ public class DashboardView extends VerticalLayout {
         tilesContainer.add(
             createCashBalanceTile(company),
             createIncomeTrendTile(company),
-            createGstDueTile(company)
+            createGstDueTile(company),
+            createOverdueReceivablesTile(company),
+            createOverduePayablesTile(company)
         );
 
         add(title, welcome, tilesContainer);
@@ -320,6 +332,218 @@ public class DashboardView extends VerticalLayout {
             .set("margin-top", "auto")
             .set("margin-bottom", "0");
         content.add(period);
+
+        return tile;
+    }
+
+    /**
+     * Creates the Overdue Receivables tile showing overdue customer invoices.
+     */
+    private Div createOverdueReceivablesTile(Company company) {
+        Div tile = createTileBase("Overdue Receivables", "var(--lumo-error-color)");
+        VerticalLayout content = (VerticalLayout) tile.getComponentAt(1);
+
+        LocalDate today = LocalDate.now();
+        List<SalesInvoice> overdueInvoices = salesInvoiceRepository.findOverdueByCompany(company, today);
+        BigDecimal totalOverdue = salesInvoiceRepository.sumOverdueByCompany(company, today);
+
+        if (overdueInvoices.isEmpty()) {
+            Paragraph noOverdue = new Paragraph("No overdue invoices");
+            noOverdue.getStyle().set("color", "var(--lumo-success-color)");
+            content.add(noOverdue);
+        } else {
+            // Show count
+            HorizontalLayout countRow = createMetricRow(
+                "Overdue invoices",
+                BigDecimal.valueOf(overdueInvoices.size()),
+                null
+            );
+            // Replace the formatted value with just the count
+            Span countValue = (Span) countRow.getComponentAt(1);
+            countValue.setText(String.valueOf(overdueInvoices.size()));
+            content.add(countRow);
+
+            // Show up to 3 oldest overdue invoices
+            int displayCount = Math.min(3, overdueInvoices.size());
+            for (int i = 0; i < displayCount; i++) {
+                SalesInvoice invoice = overdueInvoices.get(i);
+                HorizontalLayout invoiceRow = new HorizontalLayout();
+                invoiceRow.setWidthFull();
+                invoiceRow.setJustifyContentMode(JustifyContentMode.BETWEEN);
+                invoiceRow.setPadding(false);
+                invoiceRow.setSpacing(false);
+
+                String contactName = invoice.getContact() != null
+                    ? invoice.getContact().getName()
+                    : invoice.getInvoiceNumber();
+                if (contactName.length() > 20) {
+                    contactName = contactName.substring(0, 17) + "...";
+                }
+
+                Span nameSpan = new Span(contactName);
+                nameSpan.getStyle()
+                    .set("font-size", "var(--lumo-font-size-xs)")
+                    .set("color", "var(--lumo-secondary-text-color)");
+
+                Span amountSpan = new Span(formatCurrency(invoice.getBalance()));
+                amountSpan.getStyle()
+                    .set("font-size", "var(--lumo-font-size-xs)")
+                    .set("color", "var(--lumo-error-color)");
+
+                invoiceRow.add(nameSpan, amountSpan);
+                content.add(invoiceRow);
+            }
+
+            if (overdueInvoices.size() > 3) {
+                Paragraph more = new Paragraph("+" + (overdueInvoices.size() - 3) + " more...");
+                more.getStyle()
+                    .set("font-size", "var(--lumo-font-size-xs)")
+                    .set("color", "var(--lumo-secondary-text-color)")
+                    .set("margin", "0");
+                content.add(more);
+            }
+
+            // Divider
+            Div divider = new Div();
+            divider.getStyle()
+                .set("border-top", "1px solid var(--lumo-contrast-10pct)")
+                .set("margin", "var(--lumo-space-s) 0");
+            content.add(divider);
+
+            // Total overdue
+            HorizontalLayout totalRow = new HorizontalLayout();
+            totalRow.setWidthFull();
+            totalRow.setJustifyContentMode(JustifyContentMode.BETWEEN);
+            totalRow.setPadding(false);
+            totalRow.setSpacing(false);
+
+            Span totalLabel = new Span("Total Overdue");
+            totalLabel.getStyle().set("font-weight", "600");
+
+            Span totalValue = new Span(formatCurrency(totalOverdue));
+            totalValue.getStyle()
+                .set("font-weight", "600")
+                .set("font-size", "var(--lumo-font-size-l)")
+                .set("color", "var(--lumo-error-color)");
+
+            totalRow.add(totalLabel, totalValue);
+            content.add(totalRow);
+        }
+
+        // As of info
+        Paragraph asOf = new Paragraph("As of " + today.format(dateFormatter));
+        asOf.getStyle()
+            .set("color", "var(--lumo-secondary-text-color)")
+            .set("font-size", "var(--lumo-font-size-xs)")
+            .set("margin-top", "auto")
+            .set("margin-bottom", "0");
+        content.add(asOf);
+
+        return tile;
+    }
+
+    /**
+     * Creates the Overdue Payables tile showing overdue supplier bills.
+     */
+    private Div createOverduePayablesTile(Company company) {
+        Div tile = createTileBase("Overdue Payables", "var(--lumo-error-color)");
+        VerticalLayout content = (VerticalLayout) tile.getComponentAt(1);
+
+        LocalDate today = LocalDate.now();
+        List<SupplierBill> overdueBills = supplierBillRepository.findOverdueByCompany(company, today);
+        BigDecimal totalOverdue = supplierBillRepository.sumOverdueByCompany(company, today);
+
+        if (overdueBills.isEmpty()) {
+            Paragraph noOverdue = new Paragraph("No overdue bills");
+            noOverdue.getStyle().set("color", "var(--lumo-success-color)");
+            content.add(noOverdue);
+        } else {
+            // Show count
+            HorizontalLayout countRow = createMetricRow(
+                "Overdue bills",
+                BigDecimal.valueOf(overdueBills.size()),
+                null
+            );
+            // Replace the formatted value with just the count
+            Span countValue = (Span) countRow.getComponentAt(1);
+            countValue.setText(String.valueOf(overdueBills.size()));
+            content.add(countRow);
+
+            // Show up to 3 oldest overdue bills
+            int displayCount = Math.min(3, overdueBills.size());
+            for (int i = 0; i < displayCount; i++) {
+                SupplierBill bill = overdueBills.get(i);
+                HorizontalLayout billRow = new HorizontalLayout();
+                billRow.setWidthFull();
+                billRow.setJustifyContentMode(JustifyContentMode.BETWEEN);
+                billRow.setPadding(false);
+                billRow.setSpacing(false);
+
+                String contactName = bill.getContact() != null
+                    ? bill.getContact().getName()
+                    : bill.getBillNumber();
+                if (contactName.length() > 20) {
+                    contactName = contactName.substring(0, 17) + "...";
+                }
+
+                Span nameSpan = new Span(contactName);
+                nameSpan.getStyle()
+                    .set("font-size", "var(--lumo-font-size-xs)")
+                    .set("color", "var(--lumo-secondary-text-color)");
+
+                Span amountSpan = new Span(formatCurrency(bill.getBalance()));
+                amountSpan.getStyle()
+                    .set("font-size", "var(--lumo-font-size-xs)")
+                    .set("color", "var(--lumo-error-color)");
+
+                billRow.add(nameSpan, amountSpan);
+                content.add(billRow);
+            }
+
+            if (overdueBills.size() > 3) {
+                Paragraph more = new Paragraph("+" + (overdueBills.size() - 3) + " more...");
+                more.getStyle()
+                    .set("font-size", "var(--lumo-font-size-xs)")
+                    .set("color", "var(--lumo-secondary-text-color)")
+                    .set("margin", "0");
+                content.add(more);
+            }
+
+            // Divider
+            Div divider = new Div();
+            divider.getStyle()
+                .set("border-top", "1px solid var(--lumo-contrast-10pct)")
+                .set("margin", "var(--lumo-space-s) 0");
+            content.add(divider);
+
+            // Total overdue
+            HorizontalLayout totalRow = new HorizontalLayout();
+            totalRow.setWidthFull();
+            totalRow.setJustifyContentMode(JustifyContentMode.BETWEEN);
+            totalRow.setPadding(false);
+            totalRow.setSpacing(false);
+
+            Span totalLabel = new Span("Total Overdue");
+            totalLabel.getStyle().set("font-weight", "600");
+
+            Span totalValue = new Span(formatCurrency(totalOverdue));
+            totalValue.getStyle()
+                .set("font-weight", "600")
+                .set("font-size", "var(--lumo-font-size-l)")
+                .set("color", "var(--lumo-error-color)");
+
+            totalRow.add(totalLabel, totalValue);
+            content.add(totalRow);
+        }
+
+        // As of info
+        Paragraph asOf = new Paragraph("As of " + today.format(dateFormatter));
+        asOf.getStyle()
+            .set("color", "var(--lumo-secondary-text-color)")
+            .set("font-size", "var(--lumo-font-size-xs)")
+            .set("margin-top", "auto")
+            .set("margin-bottom", "0");
+        content.add(asOf);
 
         return tile;
     }
