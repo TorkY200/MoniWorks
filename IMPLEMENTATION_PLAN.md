@@ -60,12 +60,31 @@ Per specs, Release 1 must deliver:
 - [ ] Reconciliation matching UI
 
 ### Phase 4: Reports & Polish
-- [ ] Trial Balance report view
-- [ ] P&L report view
-- [ ] Balance Sheet report view
+- [x] Trial Balance report view
+  - Created ReportsView.java with tabbed interface for all 3 financial reports
+  - Date range pickers (from_date to to_date) for Trial Balance filtering
+  - Account, debit, credit, and balance columns with proper formatting
+- [x] P&L report view
+  - Date range pickers for period selection in P&L tab
+  - Revenue, Expense, and Net Profit/Loss calculations and display
+  - Formatted money display with totals rows
+- [x] Balance Sheet report view
+  - As-of date picker for balance sheet snapshot
+  - Assets, Liabilities, and Equity sections with hierarchical account structure
+  - Balance status indicators showing BALANCED/OUT OF BALANCE
 - [ ] GST return generation
 - [ ] Attachments support
 - [ ] Audit event logging UI
+
+## ReportsView Implementation Details
+- Created comprehensive ReportsView.java with tabbed interface for Trial Balance, P&L, and Balance Sheet
+- Date range pickers implemented for Trial Balance and P&L reports
+- As-of date picker for Balance Sheet reports to show account balances at specific point in time
+- Balance status indicators display current balance status (BALANCED/OUT OF BALANCE)
+- Formatted money display using CurrencyFormat utility for consistent currency presentation
+- Totals rows implemented for all report sections showing subtotals and final balances
+- Added Reports navigation item to MainLayout with chart-bar icon for easy access
+- Reports leverage existing ReportingService for data retrieval
 
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead

@@ -3,6 +3,7 @@ package com.example.application.ui;
 import com.example.application.ui.views.AccountsView;
 import com.example.application.ui.views.DashboardView;
 import com.example.application.ui.views.PeriodsView;
+import com.example.application.ui.views.ReportsView;
 import com.example.application.ui.views.TaxCodesView;
 import com.example.application.ui.views.TransactionsView;
 import com.vaadin.flow.component.applayout.AppLayout;
@@ -62,6 +63,8 @@ public class MainLayout extends AppLayout {
             VaadinIcon.BOOK.create()));
         nav.addItem(new SideNavItem("Tax Codes", TaxCodesView.class,
             VaadinIcon.CALC.create()));
+        nav.addItem(new SideNavItem("Reports", ReportsView.class,
+            VaadinIcon.CHART.create()));
         nav.addItem(new SideNavItem("Periods", PeriodsView.class,
             VaadinIcon.CALENDAR.create()));
 
