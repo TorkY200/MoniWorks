@@ -257,4 +257,27 @@ public class AccountService {
         auditService.logEvent(account.getCompany(), actor, "ACCOUNT_DEACTIVATED", "Account", account.getId(),
             "Deactivated account: " + account.getCode());
     }
+
+    /**
+     * Finds all bank accounts for a company.
+     *
+     * @param company the company
+     * @return list of accounts marked as bank accounts
+     */
+    @Transactional(readOnly = true)
+    public List<Account> findBankAccountsByCompany(Company company) {
+        return accountRepository.findBankAccountsByCompany(company);
+    }
+
+    /**
+     * Finds bank accounts for a company, filtered by user's security level.
+     *
+     * @param company the company
+     * @param maxSecurityLevel the user's maximum security level
+     * @return filtered list of bank accounts
+     */
+    @Transactional(readOnly = true)
+    public List<Account> findBankAccountsByCompanyWithSecurityLevel(Company company, int maxSecurityLevel) {
+        return accountRepository.findBankAccountsByCompanyWithSecurityLevel(company, maxSecurityLevel);
+    }
 }

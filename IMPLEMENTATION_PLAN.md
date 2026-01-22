@@ -24,6 +24,7 @@
 - **Phase 16 Cashflow Report & Quality Tooling COMPLETE** - Tag: 0.2.8
 - **Phase 17 Account Security Level & Audit Logging COMPLETE** - Tag: 0.2.9
 - **Phase 18 Report Drilldown & Allocation Rules UI COMPLETE** - Tag: 0.3.0
+- **Phase 19 Payment Runs UI COMPLETE** - Tag: 0.3.1
 - All 71 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, ApplicationTest: 1)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView
 - Database configured: H2 for development, PostgreSQL for production
@@ -530,6 +531,24 @@ Per specs, Release 1 must deliver:
   - Audit logging for rule creation, update, and deletion
   - Added navigation to MainLayout with AUTOMATION icon
 
+### Phase 19: Payment Runs UI (COMPLETE) - Tag: 0.3.1
+- [x] PaymentRunsView for batch supplier payments (spec 10)
+  - Created PaymentRunsView with master-detail split layout
+  - Payment run wizard with step-by-step flow:
+    - Select bank account and payment date
+    - Filter bills by due date and/or specific suppliers
+    - Multi-select bills to include in run
+    - Preview total and bills grouped by supplier
+    - Create draft or create and complete in one step
+  - Bills grid showing: bill number, supplier, dates, total, payment amount
+  - Summary by supplier showing totals per vendor
+  - Actions: Add Bills, Complete Run (for drafts); Download Remittance, Email Remittance (for completed)
+  - Remove bills from draft runs
+  - Email remittance to suppliers with email addresses configured
+  - Added navigation to MainLayout with MONEY_EXCHANGE icon
+- [x] Added findBankAccountsByCompany and findBankAccountsByCompanyWithSecurityLevel to AccountService
+  - Exposes existing AccountRepository methods for finding bank accounts
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -576,6 +595,9 @@ Per specs, Release 1 must deliver:
 - AccountRepository now has security-level filtered variants of all queries - use WithSecurityLevel suffix methods when user context matters
 - AuditService.logEvent with changes Map parameter serializes before/after values to detailsJson for tracking field changes
 - Grid addItemClickListener() enables drilldown functionality - combine with cursor pointer styling for UX hint
+- Vaadin Checkbox doesn't have setUserData/getUserData methods - use a Map<Checkbox, Object> to associate data with checkboxes
+- EmailService.EmailResult.queued() is a static factory method, not an instance method - check status with result.status().equals("QUEUED")
+- EmailService.sendRemittanceAdvice signature is (Contact, Company, byte[], User) - contact first, not company
 
 ## Technical Notes
 - Build: `./mvnw compile`
