@@ -3,6 +3,7 @@ package com.example.application.ui.views;
 import com.example.application.domain.*;
 import com.example.application.domain.TaxReturn.Basis;
 import com.example.application.domain.TaxReturn.Status;
+import com.example.application.repository.TaxLineRepository;
 import com.example.application.service.*;
 import com.example.application.ui.MainLayout;
 import com.vaadin.flow.component.button.Button;
@@ -45,15 +46,18 @@ public class GstReturnsView extends VerticalLayout {
 
     private final TaxReturnService taxReturnService;
     private final CompanyContextService companyContextService;
+    private final TaxLineRepository taxLineRepository;
 
     private final Grid<TaxReturn> returnsGrid = new Grid<>();
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
     public GstReturnsView(TaxReturnService taxReturnService,
-                          CompanyContextService companyContextService) {
+                          CompanyContextService companyContextService,
+                          TaxLineRepository taxLineRepository) {
         this.taxReturnService = taxReturnService;
         this.companyContextService = companyContextService;
+        this.taxLineRepository = taxLineRepository;
 
         addClassName("gst-returns-view");
         setSizeFull();
@@ -278,12 +282,15 @@ public class GstReturnsView extends VerticalLayout {
 
         // Summary section
         H3 summaryTitle = new H3("Return Summary");
+        Span summaryHint = new Span("Click a row to view contributing transactions");
+        summaryHint.getStyle().set("color", "var(--lumo-secondary-text-color)")
+            .set("font-size", "var(--lumo-font-size-s)");
 
-        Grid<SummaryRow> summaryGrid = new Grid<>();
+        Grid<DrilldownSummaryRow> summaryGrid = new Grid<>();
         summaryGrid.setHeight("250px");
         summaryGrid.addThemeVariants(GridVariant.LUMO_COMPACT, GridVariant.LUMO_NO_BORDER);
 
-        summaryGrid.addColumn(SummaryRow::label)
+        summaryGrid.addColumn(DrilldownSummaryRow::label)
             .setHeader("Box")
             .setFlexGrow(1);
 
@@ -291,15 +298,25 @@ public class GstReturnsView extends VerticalLayout {
             .setHeader("Amount")
             .setAutoWidth(true);
 
-        // Populate summary from return lines
-        List<SummaryRow> summaryRows = taxReturn.getLines().stream()
-            .map(line -> new SummaryRow(
+        // Populate summary from return lines with drilldown support
+        List<DrilldownSummaryRow> summaryRows = taxReturn.getLines().stream()
+            .map(line -> new DrilldownSummaryRow(
                 "Box " + line.getBoxCode() + ": " + line.getBoxDescription(),
-                line.getAmount()
+                line.getAmount(),
+                line.getBoxCode(),
+                taxReturn.getStartDate(),
+                taxReturn.getEndDate()
             ))
             .toList();
 
         summaryGrid.setItems(summaryRows);
+
+        // Enable drilldown on row click to see contributing transactions
+        summaryGrid.addItemClickListener(event -> {
+            DrilldownSummaryRow row = event.getItem();
+            openTaxLineDrilldownDialog(row.boxCode(), row.startDate(), row.endDate());
+        });
+        summaryGrid.getStyle().set("cursor", "pointer");
 
         // Status and dates
         Div statusInfo = new Div();
@@ -332,7 +349,7 @@ public class GstReturnsView extends VerticalLayout {
 
         totalsLayout.add(taxPayable);
 
-        content.add(summaryTitle, summaryGrid, statusInfo, totalsLayout);
+        content.add(summaryTitle, summaryHint, summaryGrid, statusInfo, totalsLayout);
 
         Button closeBtn = new Button("Close", e -> dialog.close());
 
@@ -383,5 +400,96 @@ public class GstReturnsView extends VerticalLayout {
         }
     }
 
-    private record SummaryRow(String label, BigDecimal amount) {}
+    private record DrilldownSummaryRow(String label, BigDecimal amount, String boxCode, LocalDate startDate, LocalDate endDate) {}
+
+    /**
+     * Opens a dialog showing tax lines (transactions) contributing to a specific GST box.
+     */
+    private void openTaxLineDrilldownDialog(String boxCode, LocalDate startDate, LocalDate endDate) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Tax Transactions for Box " + boxCode);
+        dialog.setWidth("900px");
+        dialog.setHeight("600px");
+
+        VerticalLayout content = new VerticalLayout();
+        content.setSizeFull();
+        content.setPadding(false);
+
+        // Period info
+        Span periodInfo = new Span("Period: " + startDate.format(DATE_FORMAT) + " to " + endDate.format(DATE_FORMAT));
+        periodInfo.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+        // Fetch tax lines for this box
+        Company company = companyContextService.getCurrentCompany();
+        List<TaxLine> taxLines = taxLineRepository.findByCompanyAndReportBoxAndDateRange(company, boxCode, startDate, endDate);
+
+        // Create grid for tax lines
+        Grid<TaxLine> grid = new Grid<>();
+        grid.setSizeFull();
+        grid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES, GridVariant.LUMO_COMPACT);
+
+        grid.addColumn(tl -> tl.getEntryDate().format(DATE_FORMAT))
+            .setHeader("Date")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(tl -> tl.getLedgerEntry().getTransaction().getReference())
+            .setHeader("Reference")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(tl -> tl.getLedgerEntry().getTransaction().getDescription())
+            .setHeader("Description")
+            .setFlexGrow(1);
+
+        grid.addColumn(TaxLine::getTaxCode)
+            .setHeader("Tax Code")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(tl -> formatCurrency(tl.getTaxableAmount()))
+            .setHeader("Taxable Amount")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        grid.addColumn(tl -> formatCurrency(tl.getTaxAmount()))
+            .setHeader("Tax Amount")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        grid.setItems(taxLines);
+
+        // Calculate totals
+        BigDecimal totalTaxable = taxLines.stream()
+            .map(TaxLine::getTaxableAmount)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalTax = taxLines.stream()
+            .map(TaxLine::getTaxAmount)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Totals row
+        HorizontalLayout totalsRow = new HorizontalLayout();
+        totalsRow.setWidthFull();
+        totalsRow.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
+        totalsRow.getStyle().set("font-weight", "bold")
+            .set("padding", "8px")
+            .set("border-top", "2px solid var(--lumo-contrast-20pct)");
+
+        Span countLabel = new Span(taxLines.size() + " transactions");
+        countLabel.getStyle().set("flex-grow", "1");
+
+        Span taxableTotal = new Span("Taxable: " + formatCurrency(totalTaxable));
+        Span taxTotal = new Span("Tax: " + formatCurrency(totalTax));
+
+        taxableTotal.getStyle().set("margin-right", "16px");
+
+        totalsRow.add(countLabel, taxableTotal, taxTotal);
+
+        content.add(periodInfo, grid, totalsRow);
+
+        Button closeBtn = new Button("Close", e -> dialog.close());
+        dialog.add(content);
+        dialog.getFooter().add(closeBtn);
+        dialog.open();
+    }
 }

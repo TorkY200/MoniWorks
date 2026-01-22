@@ -23,6 +23,7 @@
 - **Phase 15 User & Permission Management COMPLETE** - Tag: 0.2.7
 - **Phase 16 Cashflow Report & Quality Tooling COMPLETE** - Tag: 0.2.8
 - **Phase 17 Account Security Level & Audit Logging COMPLETE** - Tag: 0.2.9
+- **Phase 18 Report Drilldown & Allocation Rules UI COMPLETE** - Tag: 0.3.0
 - All 71 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, ApplicationTest: 1)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView
 - Database configured: H2 for development, PostgreSQL for production
@@ -505,6 +506,30 @@ Per specs, Release 1 must deliver:
   - Changes tracked include: code, name, type, active, and entity-specific fields
 - [x] Updated ReportingServiceTest to use new security-filtered mocks
 
+### Phase 18: Report Drilldown & Allocation Rules UI (COMPLETE) - Tag: 0.3.0
+- [x] Report drilldown functionality (spec 06, spec 13)
+  - Added click-through drilldown from report lines to underlying ledger entries
+  - Trial Balance: click row to see ledger entries for that account
+  - Profit & Loss: click income/expense row to see ledger entries (supports department filtering)
+  - Balance Sheet: click asset/liability/equity row to see ledger entries
+  - Budget vs Actual: click row to see ledger entries for that account
+  - AR Aging: click customer row to see outstanding invoices
+  - AP Aging: click supplier row to see outstanding bills
+  - All drilldown dialogs show relevant details and totals
+- [x] GST return drilldown (spec 06)
+  - Added click-through from GST return boxes to contributing tax lines/transactions
+  - Shows tax code, taxable amount, and tax amount for each transaction
+  - Total and transaction count displayed
+- [x] Allocation Rules Management UI (spec 05, spec 11)
+  - Created AllocationRulesView with full CRUD for allocation rules
+  - Priority-based rule ordering (higher priority first)
+  - Match expression configuration with case-insensitive contains matching
+  - Target account and optional tax code assignment
+  - Enable/disable rules
+  - Test rules feature to verify matching against sample descriptions
+  - Audit logging for rule creation, update, and deletion
+  - Added navigation to MainLayout with AUTOMATION icon
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -550,6 +575,7 @@ Per specs, Release 1 must deliver:
 - CompanyContextService.hasPermission() provides convenient permission checking in UI components
 - AccountRepository now has security-level filtered variants of all queries - use WithSecurityLevel suffix methods when user context matters
 - AuditService.logEvent with changes Map parameter serializes before/after values to detailsJson for tracking field changes
+- Grid addItemClickListener() enables drilldown functionality - combine with cursor pointer styling for UX hint
 
 ## Technical Notes
 - Build: `./mvnw compile`

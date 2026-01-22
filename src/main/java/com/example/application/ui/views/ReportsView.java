@@ -1,9 +1,9 @@
 package com.example.application.ui.views;
 
-import com.example.application.domain.Budget;
-import com.example.application.domain.Company;
-import com.example.application.domain.Contact;
-import com.example.application.domain.Department;
+import com.example.application.domain.*;
+import com.example.application.repository.LedgerEntryRepository;
+import com.example.application.repository.SalesInvoiceRepository;
+import com.example.application.repository.SupplierBillRepository;
 import com.example.application.service.*;
 import com.example.application.service.ReportingService.*;
 import com.example.application.ui.MainLayout;
@@ -11,6 +11,7 @@ import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.datepicker.DatePicker;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
 import com.vaadin.flow.component.html.Anchor;
@@ -53,6 +54,9 @@ public class ReportsView extends VerticalLayout {
     private final FiscalYearService fiscalYearService;
     private final DepartmentService departmentService;
     private final BudgetService budgetService;
+    private final LedgerEntryRepository ledgerEntryRepository;
+    private final SalesInvoiceRepository salesInvoiceRepository;
+    private final SupplierBillRepository supplierBillRepository;
 
     private final DatePicker startDatePicker = new DatePicker("Start Date");
     private final DatePicker endDatePicker = new DatePicker("End Date");
@@ -103,13 +107,19 @@ public class ReportsView extends VerticalLayout {
                        CompanyContextService companyContextService,
                        FiscalYearService fiscalYearService,
                        DepartmentService departmentService,
-                       BudgetService budgetService) {
+                       BudgetService budgetService,
+                       LedgerEntryRepository ledgerEntryRepository,
+                       SalesInvoiceRepository salesInvoiceRepository,
+                       SupplierBillRepository supplierBillRepository) {
         this.reportingService = reportingService;
         this.reportExportService = reportExportService;
         this.companyContextService = companyContextService;
         this.fiscalYearService = fiscalYearService;
         this.departmentService = departmentService;
         this.budgetService = budgetService;
+        this.ledgerEntryRepository = ledgerEntryRepository;
+        this.salesInvoiceRepository = salesInvoiceRepository;
+        this.supplierBillRepository = supplierBillRepository;
 
         addClassName("reports-view");
         setSizeFull();
@@ -387,6 +397,18 @@ public class ReportsView extends VerticalLayout {
 
         grid.setItems(report.lines());
 
+        // Enable drilldown on row click
+        grid.addItemClickListener(event -> {
+            TrialBalanceLine line = event.getItem();
+            openLedgerDrilldownDialog(
+                line.account(),
+                report.startDate(),
+                report.endDate(),
+                null
+            );
+        });
+        grid.getStyle().set("cursor", "pointer");
+
         // Totals row
         HorizontalLayout totalsRow = new HorizontalLayout();
         totalsRow.setWidthFull();
@@ -452,6 +474,17 @@ public class ReportsView extends VerticalLayout {
         Grid<ProfitAndLossLine> incomeGrid = createPLGrid();
         incomeGrid.setItems(report.incomeLines());
         incomeGrid.setAllRowsVisible(true);
+        // Enable drilldown on row click
+        incomeGrid.addItemClickListener(event -> {
+            ProfitAndLossLine line = event.getItem();
+            openLedgerDrilldownDialog(
+                line.account(),
+                report.startDate(),
+                report.endDate(),
+                report.department()
+            );
+        });
+        incomeGrid.getStyle().set("cursor", "pointer");
 
         Span totalIncome = createTotalLine("Total Income", report.totalIncome());
 
@@ -462,6 +495,17 @@ public class ReportsView extends VerticalLayout {
         Grid<ProfitAndLossLine> expenseGrid = createPLGrid();
         expenseGrid.setItems(report.expenseLines());
         expenseGrid.setAllRowsVisible(true);
+        // Enable drilldown on row click
+        expenseGrid.addItemClickListener(event -> {
+            ProfitAndLossLine line = event.getItem();
+            openLedgerDrilldownDialog(
+                line.account(),
+                report.startDate(),
+                report.endDate(),
+                report.department()
+            );
+        });
+        expenseGrid.getStyle().set("cursor", "pointer");
 
         Span totalExpenses = createTotalLine("Total Expenses", report.totalExpenses());
 
@@ -580,6 +624,17 @@ public class ReportsView extends VerticalLayout {
         Grid<BalanceSheetLine> assetsGrid = createBSGrid();
         assetsGrid.setItems(report.assets());
         assetsGrid.setAllRowsVisible(true);
+        // Enable drilldown on row click - Balance sheet shows all entries up to asOfDate
+        assetsGrid.addItemClickListener(event -> {
+            BalanceSheetLine line = event.getItem();
+            openLedgerDrilldownDialog(
+                line.account(),
+                LocalDate.of(1900, 1, 1),  // Show all entries from the beginning
+                report.asOfDate(),
+                null
+            );
+        });
+        assetsGrid.getStyle().set("cursor", "pointer");
 
         Span totalAssets = createTotalLine("Total Assets", report.totalAssets());
 
@@ -590,6 +645,17 @@ public class ReportsView extends VerticalLayout {
         Grid<BalanceSheetLine> liabilitiesGrid = createBSGrid();
         liabilitiesGrid.setItems(report.liabilities());
         liabilitiesGrid.setAllRowsVisible(true);
+        // Enable drilldown on row click
+        liabilitiesGrid.addItemClickListener(event -> {
+            BalanceSheetLine line = event.getItem();
+            openLedgerDrilldownDialog(
+                line.account(),
+                LocalDate.of(1900, 1, 1),
+                report.asOfDate(),
+                null
+            );
+        });
+        liabilitiesGrid.getStyle().set("cursor", "pointer");
 
         Span totalLiabilities = createTotalLine("Total Liabilities", report.totalLiabilities());
 
@@ -600,6 +666,17 @@ public class ReportsView extends VerticalLayout {
         Grid<BalanceSheetLine> equityGrid = createBSGrid();
         equityGrid.setItems(report.equity());
         equityGrid.setAllRowsVisible(true);
+        // Enable drilldown on row click
+        equityGrid.addItemClickListener(event -> {
+            BalanceSheetLine line = event.getItem();
+            openLedgerDrilldownDialog(
+                line.account(),
+                LocalDate.of(1900, 1, 1),
+                report.asOfDate(),
+                null
+            );
+        });
+        equityGrid.getStyle().set("cursor", "pointer");
 
         Span totalEquity = createTotalLine("Total Equity", report.totalEquity());
 
@@ -829,6 +906,13 @@ public class ReportsView extends VerticalLayout {
         summaryGrid.setItems(report.customerSummaries());
         summaryGrid.setAllRowsVisible(true);
 
+        // Enable drilldown on row click to show outstanding invoices
+        summaryGrid.addItemClickListener(event -> {
+            ArAgingCustomerSummary summary = event.getItem();
+            openArAgingDrilldownDialog(summary.customer(), report.asOfDate());
+        });
+        summaryGrid.getStyle().set("cursor", "pointer");
+
         // Totals row
         HorizontalLayout totalsRow = new HorizontalLayout();
         totalsRow.setWidthFull();
@@ -944,6 +1028,13 @@ public class ReportsView extends VerticalLayout {
 
         summaryGrid.setItems(report.supplierSummaries());
         summaryGrid.setAllRowsVisible(true);
+
+        // Enable drilldown on row click to show outstanding bills
+        summaryGrid.addItemClickListener(event -> {
+            ApAgingSupplierSummary summary = event.getItem();
+            openApAgingDrilldownDialog(summary.supplier(), report.asOfDate());
+        });
+        summaryGrid.getStyle().set("cursor", "pointer");
 
         // Totals row
         HorizontalLayout totalsRow = new HorizontalLayout();
@@ -1069,6 +1160,18 @@ public class ReportsView extends VerticalLayout {
             .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
 
         grid.setItems(report.lines());
+
+        // Enable drilldown on row click for actual amounts
+        grid.addItemClickListener(event -> {
+            BudgetVsActualLine line = event.getItem();
+            openLedgerDrilldownDialog(
+                line.account(),
+                report.startDate(),
+                report.endDate(),
+                report.department()
+            );
+        });
+        grid.getStyle().set("cursor", "pointer");
 
         // Totals row
         HorizontalLayout totalsRow = new HorizontalLayout();
@@ -1606,5 +1709,306 @@ public class ReportsView extends VerticalLayout {
 
         cashflowExportButtons.add(pdfLink, excelLink);
         cashflowExportButtons.setVisible(true);
+    }
+
+    // ==================== DRILLDOWN DIALOGS ====================
+
+    /**
+     * Opens a dialog showing ledger entries for a specific account within a date range.
+     * Used for drilldown from Trial Balance, P&L, Balance Sheet, and Budget vs Actual reports.
+     */
+    private void openLedgerDrilldownDialog(Account account, LocalDate startDate, LocalDate endDate, Department department) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Ledger Entries: " + account.getCode() + " - " + account.getName());
+        dialog.setWidth("900px");
+        dialog.setHeight("600px");
+
+        VerticalLayout content = new VerticalLayout();
+        content.setSizeFull();
+        content.setPadding(false);
+
+        // Date range info
+        String periodText = "Period: " + startDate.format(DATE_FORMAT) + " to " + endDate.format(DATE_FORMAT);
+        if (department != null) {
+            periodText += " | Department: " + department.getCode() + " - " + department.getName();
+        }
+        Span periodInfo = new Span(periodText);
+        periodInfo.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+        // Fetch ledger entries
+        List<LedgerEntry> entries;
+        if (department != null) {
+            entries = ledgerEntryRepository.findByAccountAndDateRangeAndDepartment(account, startDate, endDate, department);
+        } else {
+            entries = ledgerEntryRepository.findByAccountAndDateRange(account, startDate, endDate);
+        }
+
+        // Create grid for ledger entries
+        Grid<LedgerEntry> grid = new Grid<>();
+        grid.setSizeFull();
+        grid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES, GridVariant.LUMO_COMPACT);
+
+        grid.addColumn(entry -> entry.getEntryDate().format(DATE_FORMAT))
+            .setHeader("Date")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(entry -> entry.getTransaction().getReference())
+            .setHeader("Reference")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(entry -> entry.getTransaction().getDescription())
+            .setHeader("Description")
+            .setFlexGrow(1);
+
+        grid.addColumn(entry -> entry.getTransaction().getType().name())
+            .setHeader("Type")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(entry -> entry.getAmountDr().compareTo(BigDecimal.ZERO) > 0 ? formatMoney(entry.getAmountDr()) : "")
+            .setHeader("Debit")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        grid.addColumn(entry -> entry.getAmountCr().compareTo(BigDecimal.ZERO) > 0 ? formatMoney(entry.getAmountCr()) : "")
+            .setHeader("Credit")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        grid.setItems(entries);
+
+        // Calculate totals
+        BigDecimal totalDebits = entries.stream()
+            .map(LedgerEntry::getAmountDr)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalCredits = entries.stream()
+            .map(LedgerEntry::getAmountCr)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal netBalance = totalDebits.subtract(totalCredits);
+
+        // Totals row
+        HorizontalLayout totalsRow = new HorizontalLayout();
+        totalsRow.setWidthFull();
+        totalsRow.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
+        totalsRow.getStyle().set("font-weight", "bold")
+            .set("padding", "8px")
+            .set("border-top", "2px solid var(--lumo-contrast-20pct)");
+
+        Span countLabel = new Span(entries.size() + " entries");
+        countLabel.getStyle().set("flex-grow", "1");
+
+        Span debitTotal = new Span("Debits: " + formatMoney(totalDebits));
+        Span creditTotal = new Span("Credits: " + formatMoney(totalCredits));
+        Span netTotal = new Span("Net: " + formatMoney(netBalance));
+
+        debitTotal.getStyle().set("margin-right", "16px");
+        creditTotal.getStyle().set("margin-right", "16px");
+        if (netBalance.compareTo(BigDecimal.ZERO) >= 0) {
+            netTotal.getStyle().set("color", "var(--lumo-success-text-color)");
+        } else {
+            netTotal.getStyle().set("color", "var(--lumo-error-text-color)");
+        }
+
+        totalsRow.add(countLabel, debitTotal, creditTotal, netTotal);
+
+        content.add(periodInfo, grid, totalsRow);
+
+        Button closeBtn = new Button("Close", e -> dialog.close());
+        dialog.add(content);
+        dialog.getFooter().add(closeBtn);
+        dialog.open();
+    }
+
+    /**
+     * Opens a dialog showing outstanding invoices for a specific customer.
+     * Used for drilldown from AR Aging report.
+     */
+    private void openArAgingDrilldownDialog(Contact customer, LocalDate asOfDate) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Outstanding Invoices: " + customer.getName());
+        dialog.setWidth("800px");
+        dialog.setHeight("500px");
+
+        VerticalLayout content = new VerticalLayout();
+        content.setSizeFull();
+        content.setPadding(false);
+
+        // As of date info
+        Span dateInfo = new Span("As of " + asOfDate.format(DATE_FORMAT));
+        dateInfo.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+        // Fetch outstanding invoices for this customer
+        Company company = companyContextService.getCurrentCompany();
+        List<SalesInvoice> invoices = salesInvoiceRepository.findOutstandingByCompanyAndContact(company, customer);
+
+        // Create grid for invoices
+        Grid<SalesInvoice> grid = new Grid<>();
+        grid.setSizeFull();
+        grid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES, GridVariant.LUMO_COMPACT);
+
+        grid.addColumn(SalesInvoice::getInvoiceNumber)
+            .setHeader("Invoice #")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(inv -> inv.getIssueDate().format(DATE_FORMAT))
+            .setHeader("Issue Date")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(inv -> inv.getDueDate().format(DATE_FORMAT))
+            .setHeader("Due Date")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(inv -> {
+            long daysOverdue = java.time.temporal.ChronoUnit.DAYS.between(inv.getDueDate(), asOfDate);
+            if (daysOverdue <= 0) return "Current";
+            else if (daysOverdue <= 30) return "1-30 days";
+            else if (daysOverdue <= 60) return "31-60 days";
+            else if (daysOverdue <= 90) return "61-90 days";
+            else return "90+ days";
+        })
+            .setHeader("Aging")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(inv -> formatMoney(inv.getTotal()))
+            .setHeader("Total")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        grid.addColumn(inv -> formatMoney(inv.getBalance()))
+            .setHeader("Balance")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        grid.setItems(invoices);
+
+        // Calculate totals
+        BigDecimal totalOutstanding = invoices.stream()
+            .map(SalesInvoice::getBalance)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Totals row
+        HorizontalLayout totalsRow = new HorizontalLayout();
+        totalsRow.setWidthFull();
+        totalsRow.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        totalsRow.getStyle().set("font-weight", "bold")
+            .set("padding", "8px")
+            .set("border-top", "2px solid var(--lumo-contrast-20pct)");
+
+        Span countLabel = new Span(invoices.size() + " outstanding invoice(s)");
+        Span totalLabel = new Span("Total Outstanding: " + formatMoney(totalOutstanding));
+        totalLabel.getStyle().set("color", "var(--lumo-error-text-color)");
+
+        totalsRow.add(countLabel, totalLabel);
+
+        content.add(dateInfo, grid, totalsRow);
+
+        Button closeBtn = new Button("Close", e -> dialog.close());
+        dialog.add(content);
+        dialog.getFooter().add(closeBtn);
+        dialog.open();
+    }
+
+    /**
+     * Opens a dialog showing outstanding bills for a specific supplier.
+     * Used for drilldown from AP Aging report.
+     */
+    private void openApAgingDrilldownDialog(Contact supplier, LocalDate asOfDate) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Outstanding Bills: " + supplier.getName());
+        dialog.setWidth("800px");
+        dialog.setHeight("500px");
+
+        VerticalLayout content = new VerticalLayout();
+        content.setSizeFull();
+        content.setPadding(false);
+
+        // As of date info
+        Span dateInfo = new Span("As of " + asOfDate.format(DATE_FORMAT));
+        dateInfo.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+        // Fetch outstanding bills for this supplier
+        Company company = companyContextService.getCurrentCompany();
+        List<SupplierBill> bills = supplierBillRepository.findOutstandingByCompanyAndContact(company, supplier);
+
+        // Create grid for bills
+        Grid<SupplierBill> grid = new Grid<>();
+        grid.setSizeFull();
+        grid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES, GridVariant.LUMO_COMPACT);
+
+        grid.addColumn(SupplierBill::getBillNumber)
+            .setHeader("Bill #")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(bill -> bill.getSupplierReference() != null ? bill.getSupplierReference() : "")
+            .setHeader("Supplier Ref")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(bill -> bill.getBillDate().format(DATE_FORMAT))
+            .setHeader("Bill Date")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(bill -> bill.getDueDate().format(DATE_FORMAT))
+            .setHeader("Due Date")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(bill -> {
+            long daysOverdue = java.time.temporal.ChronoUnit.DAYS.between(bill.getDueDate(), asOfDate);
+            if (daysOverdue <= 0) return "Current";
+            else if (daysOverdue <= 30) return "1-30 days";
+            else if (daysOverdue <= 60) return "31-60 days";
+            else if (daysOverdue <= 90) return "61-90 days";
+            else return "90+ days";
+        })
+            .setHeader("Aging")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(bill -> formatMoney(bill.getTotal()))
+            .setHeader("Total")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        grid.addColumn(bill -> formatMoney(bill.getBalance()))
+            .setHeader("Balance")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        grid.setItems(bills);
+
+        // Calculate totals
+        BigDecimal totalOutstanding = bills.stream()
+            .map(SupplierBill::getBalance)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Totals row
+        HorizontalLayout totalsRow = new HorizontalLayout();
+        totalsRow.setWidthFull();
+        totalsRow.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        totalsRow.getStyle().set("font-weight", "bold")
+            .set("padding", "8px")
+            .set("border-top", "2px solid var(--lumo-contrast-20pct)");
+
+        Span countLabel = new Span(bills.size() + " outstanding bill(s)");
+        Span totalLabel = new Span("Total Outstanding: " + formatMoney(totalOutstanding));
+        totalLabel.getStyle().set("color", "var(--lumo-error-text-color)");
+
+        totalsRow.add(countLabel, totalLabel);
+
+        content.add(dateInfo, grid, totalsRow);
+
+        Button closeBtn = new Button("Close", e -> dialog.close());
+        dialog.add(content);
+        dialog.getFooter().add(closeBtn);
+        dialog.open();
     }
 }

@@ -5,6 +5,7 @@ import com.example.application.domain.User;
 import com.example.application.security.Permissions;
 import com.example.application.service.CompanyContextService;
 import com.example.application.ui.views.AccountsView;
+import com.example.application.ui.views.AllocationRulesView;
 import com.example.application.ui.views.AuditEventsView;
 import com.example.application.ui.views.BankReconciliationView;
 import com.example.application.ui.views.ContactsView;
@@ -199,6 +200,8 @@ public class MainLayout extends AppLayout {
             VaadinIcon.PACKAGE.create()));
         nav.addItem(new SideNavItem("Bank Reconciliation", BankReconciliationView.class,
             VaadinIcon.PIGGY_BANK.create()));
+        nav.addItem(new SideNavItem("Allocation Rules", AllocationRulesView.class,
+            VaadinIcon.AUTOMATION.create()));
         nav.addItem(new SideNavItem("Accounts", AccountsView.class,
             VaadinIcon.BOOK.create()));
         nav.addItem(new SideNavItem("Tax Codes", TaxCodesView.class,
