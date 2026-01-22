@@ -5,7 +5,10 @@ import com.example.application.ui.views.AuditEventsView;
 import com.example.application.ui.views.BankReconciliationView;
 import com.example.application.ui.views.ContactsView;
 import com.example.application.ui.views.DashboardView;
+import com.example.application.ui.views.BudgetsView;
+import com.example.application.ui.views.DepartmentsView;
 import com.example.application.ui.views.GstReturnsView;
+import com.example.application.ui.views.KPIsView;
 import com.example.application.ui.views.PeriodsView;
 import com.example.application.ui.views.ProductsView;
 import com.example.application.ui.views.ReportsView;
@@ -82,6 +85,12 @@ public class MainLayout extends AppLayout {
             VaadinIcon.CALC.create()));
         nav.addItem(new SideNavItem("GST Returns", GstReturnsView.class,
             VaadinIcon.FILE_TEXT_O.create()));
+        nav.addItem(new SideNavItem("Departments", DepartmentsView.class,
+            VaadinIcon.SITEMAP.create()));
+        nav.addItem(new SideNavItem("Budgets", BudgetsView.class,
+            VaadinIcon.MONEY.create()));
+        nav.addItem(new SideNavItem("KPIs", KPIsView.class,
+            VaadinIcon.TRENDING_UP.create()));
         nav.addItem(new SideNavItem("Reports", ReportsView.class,
             VaadinIcon.CHART.create()));
         nav.addItem(new SideNavItem("Periods", PeriodsView.class,

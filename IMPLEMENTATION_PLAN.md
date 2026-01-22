@@ -7,14 +7,15 @@
 - **Phase 3 Tax & Bank COMPLETE** - Tag: 0.0.3
 - **Phase 4 Reports & Polish COMPLETE** - Tag: 0.0.8
 - **Phase 5 Contacts & Products COMPLETE** - Tag: 0.0.9
-- **Phase 6 A/R and A/P COMPLETE** - Tag: 0.1.1
+- **Phase 6 A/R and A/P COMPLETE** - Tag: 0.1.2
+- **Phase 7 Budgeting & Departments COMPLETE** - Tag: 0.1.3
 - All 37 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, ApplicationTest: 1)
-- Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun
+- Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue
 - Database configured: H2 for development, PostgreSQL for production
-- Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql
-- All repository interfaces created (31 repositories)
-- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService, SalesInvoiceService, ReceivableAllocationService, SupplierBillService, PayableAllocationService, PaymentRunService, RemittanceAdviceService
-- Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView, AuditEventsView, ContactsView, ProductsView, SalesInvoicesView, SupplierBillsView
+- Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql
+- All repository interfaces created (35 repositories)
+- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService, SalesInvoiceService, ReceivableAllocationService, SupplierBillService, PayableAllocationService, PaymentRunService, RemittanceAdviceService, DepartmentService, BudgetService, KPIService
+- Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView, AuditEventsView, ContactsView, ProductsView, SalesInvoicesView, SupplierBillsView, DepartmentsView, BudgetsView, KPIsView
 - Security configuration with SecurityConfig and UserDetailsServiceImpl (using VaadinSecurityConfigurer API)
 
 ## Release 1 (SLC) - Target Features
@@ -137,6 +138,29 @@ Per specs, Release 1 must deliver:
   - PDF automatically generated when PaymentRun is completed and attached to the run
   - Added PAYMENT_RUN to AttachmentLink.EntityType enum
 
+### Phase 7: Budgeting & Departments (COMPLETE) - Tag: 0.1.3
+- [x] Departments (spec 12)
+  - Department entity already existed in domain with code (max 5 chars), name, groupName, classification, active
+  - Created DepartmentService with full CRUD, audit logging, createDefaultDepartments
+  - Created DepartmentsView with grid, add/edit/deactivate dialogs, search, create defaults button
+  - Added Departments navigation to MainLayout with SITEMAP icon
+- [x] Budgets (spec 12)
+  - Created Budget entity with name, type (A/B), currency, active
+  - Created BudgetLine entity for budget amounts per account/period/department
+  - Created V10__budgets_kpis.sql migration with budget and budget_line tables
+  - Created BudgetRepository and BudgetLineRepository with fiscal year queries
+  - Created BudgetService with full CRUD for budgets and budget lines
+  - Created BudgetsView with master-detail split layout, fiscal year selector, budget line management
+  - Added Budgets navigation to MainLayout with MONEY icon
+- [x] KPIs (spec 12)
+  - Created KPI entity with code, name, unit, description, active
+  - Created KPIValue entity for KPI values per period
+  - Added kpi and kpi_value tables to V10__budgets_kpis.sql migration
+  - Created KPIRepository and KPIValueRepository with fiscal year queries
+  - Created KPIService with full CRUD for KPIs and KPI values, createDefaultKPIs
+  - Created KPIsView with master-detail split layout, fiscal year selector, value management
+  - Added KPIs navigation to MainLayout with TRENDING_UP icon
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -152,6 +176,9 @@ Per specs, Release 1 must deliver:
 - TransactionService.createTransaction requires description parameter
 - OpenPDF (com.github.librepdf:openpdf) used for PDF generation - provides Document, PdfWriter, PdfPTable classes
 - When adding new services that need circular dependencies (like RemittanceAdviceService in PaymentRunService), ensure constructor injection order
+- FiscalYear uses getLabel() not getName() - Period uses getStartDate()/getEndDate() without getName()
+- Use DateTimeFormatter for displaying period names (e.g., "MMM yyyy")
+- AccountService.findByCompany takes Company object, not companyId
 
 ## Technical Notes
 - Build: `./mvnw compile`
