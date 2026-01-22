@@ -1032,4 +1032,426 @@ public class ReportExportService {
         if (percent == null) return "0.0%";
         return percent.abs().setScale(1, java.math.RoundingMode.HALF_UP) + "%";
     }
+
+    // ==================== AR AGING EXPORTS ====================
+
+    /**
+     * Exports AR Aging report to PDF format.
+     * Shows outstanding receivables categorized by aging buckets (Current, 1-30, 31-60, 61-90, 90+ days).
+     */
+    public byte[] exportArAgingToPdf(ArAgingReport report, Company company) {
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            Document document = new Document(PageSize.A4.rotate()); // Landscape for more columns
+            PdfWriter.getInstance(document, baos);
+            document.open();
+
+            // Title
+            addReportTitle(document, company, "Accounts Receivable Aging Report");
+            addReportSubtitle(document, "As of " + report.asOfDate().format(dateFormatter));
+
+            // Summary section
+            addSectionHeader(document, "Aging Summary by Customer");
+
+            PdfPTable summaryTable = new PdfPTable(7);
+            summaryTable.setWidthPercentage(100);
+            summaryTable.setWidths(new float[]{3f, 1.5f, 1.5f, 1.5f, 1.5f, 1.5f, 2f});
+
+            addTableHeader(summaryTable, "Customer");
+            addTableHeader(summaryTable, "Current");
+            addTableHeader(summaryTable, "1-30 Days");
+            addTableHeader(summaryTable, "31-60 Days");
+            addTableHeader(summaryTable, "61-90 Days");
+            addTableHeader(summaryTable, "90+ Days");
+            addTableHeader(summaryTable, "Total");
+
+            boolean alternate = false;
+            for (ArAgingCustomerSummary summary : report.customerSummaries()) {
+                Color bg = alternate ? ALT_ROW_BG : Color.WHITE;
+                addTableCell(summaryTable, summary.customer().getName(), bg, Element.ALIGN_LEFT);
+                addTableCell(summaryTable, formatCurrency(summary.current()), bg, Element.ALIGN_RIGHT);
+                addAgingCell(summaryTable, summary.days1to30(), bg, 1);
+                addAgingCell(summaryTable, summary.days31to60(), bg, 31);
+                addAgingCell(summaryTable, summary.days61to90(), bg, 61);
+                addAgingCell(summaryTable, summary.days90Plus(), bg, 91);
+                addTableCell(summaryTable, formatCurrency(summary.total()), bg, Element.ALIGN_RIGHT);
+                alternate = !alternate;
+            }
+
+            // Totals row
+            addTotalCell(summaryTable, "Totals");
+            addTotalCell(summaryTable, formatCurrency(report.totalCurrent()));
+            addTotalCell(summaryTable, formatCurrency(report.total1to30()));
+            addTotalCell(summaryTable, formatCurrency(report.total31to60()));
+            addTotalCell(summaryTable, formatCurrency(report.total61to90()));
+            addTotalCell(summaryTable, formatCurrency(report.total90Plus()));
+            addTotalCell(summaryTable, formatCurrency(report.grandTotal()));
+
+            document.add(summaryTable);
+
+            // Grand total highlight
+            document.add(Chunk.NEWLINE);
+            PdfPTable grandTotalTable = new PdfPTable(2);
+            grandTotalTable.setWidthPercentage(50);
+            grandTotalTable.setHorizontalAlignment(Element.ALIGN_RIGHT);
+
+            PdfPCell labelCell = new PdfPCell(new Phrase("Total Outstanding Receivables", TOTAL_FONT));
+            labelCell.setBorder(Rectangle.TOP);
+            labelCell.setBorderWidth(2);
+            labelCell.setPadding(10);
+            labelCell.setBackgroundColor(TOTAL_BG);
+            grandTotalTable.addCell(labelCell);
+
+            PdfPCell amountCell = new PdfPCell(new Phrase(formatCurrency(report.grandTotal()), TOTAL_FONT));
+            amountCell.setBorder(Rectangle.TOP);
+            amountCell.setBorderWidth(2);
+            amountCell.setPadding(10);
+            amountCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            amountCell.setBackgroundColor(TOTAL_BG);
+            grandTotalTable.addCell(amountCell);
+
+            document.add(grandTotalTable);
+
+            addReportFooter(document);
+            document.close();
+
+            log.info("Generated AR Aging PDF ({} bytes)", baos.size());
+            return baos.toByteArray();
+
+        } catch (Exception e) {
+            log.error("Failed to generate AR Aging PDF", e);
+            throw new RuntimeException("Failed to generate AR Aging PDF: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Exports AR Aging report to Excel format.
+     */
+    public byte[] exportArAgingToExcel(ArAgingReport report, Company company) {
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+
+            Sheet sheet = workbook.createSheet("AR Aging");
+            int rowNum = 0;
+
+            CellStyle headerStyle = createHeaderStyle(workbook);
+            CellStyle currencyStyle = createCurrencyStyle(workbook);
+            CellStyle titleStyle = createTitleStyle(workbook);
+            CellStyle totalStyle = createTotalStyle(workbook);
+
+            // Title
+            org.apache.poi.ss.usermodel.Row titleRow = sheet.createRow(rowNum++);
+            org.apache.poi.ss.usermodel.Cell titleCell = titleRow.createCell(0);
+            titleCell.setCellValue(company.getName() + " - Accounts Receivable Aging Report");
+            titleCell.setCellStyle(titleStyle);
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 6));
+
+            // As of date
+            org.apache.poi.ss.usermodel.Row dateRow = sheet.createRow(rowNum++);
+            dateRow.createCell(0).setCellValue("As of " + report.asOfDate().format(dateFormatter));
+
+            rowNum++; // Empty row
+
+            // Header row
+            org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(rowNum++);
+            String[] headers = {"Customer", "Current", "1-30 Days", "31-60 Days", "61-90 Days", "90+ Days", "Total"};
+            for (int i = 0; i < headers.length; i++) {
+                org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // Data rows
+            for (ArAgingCustomerSummary summary : report.customerSummaries()) {
+                org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(summary.customer().getName());
+
+                org.apache.poi.ss.usermodel.Cell currentCell = row.createCell(1);
+                currentCell.setCellValue(summary.current().doubleValue());
+                currentCell.setCellStyle(currencyStyle);
+
+                org.apache.poi.ss.usermodel.Cell days1to30Cell = row.createCell(2);
+                days1to30Cell.setCellValue(summary.days1to30().doubleValue());
+                days1to30Cell.setCellStyle(currencyStyle);
+
+                org.apache.poi.ss.usermodel.Cell days31to60Cell = row.createCell(3);
+                days31to60Cell.setCellValue(summary.days31to60().doubleValue());
+                days31to60Cell.setCellStyle(currencyStyle);
+
+                org.apache.poi.ss.usermodel.Cell days61to90Cell = row.createCell(4);
+                days61to90Cell.setCellValue(summary.days61to90().doubleValue());
+                days61to90Cell.setCellStyle(currencyStyle);
+
+                org.apache.poi.ss.usermodel.Cell days90PlusCell = row.createCell(5);
+                days90PlusCell.setCellValue(summary.days90Plus().doubleValue());
+                days90PlusCell.setCellStyle(currencyStyle);
+
+                org.apache.poi.ss.usermodel.Cell totalCell = row.createCell(6);
+                totalCell.setCellValue(summary.total().doubleValue());
+                totalCell.setCellStyle(currencyStyle);
+            }
+
+            // Totals row
+            org.apache.poi.ss.usermodel.Row totalsRow = sheet.createRow(rowNum);
+            org.apache.poi.ss.usermodel.Cell totalLabel = totalsRow.createCell(0);
+            totalLabel.setCellValue("Totals");
+            totalLabel.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell totalCurrent = totalsRow.createCell(1);
+            totalCurrent.setCellValue(report.totalCurrent().doubleValue());
+            totalCurrent.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell total1to30 = totalsRow.createCell(2);
+            total1to30.setCellValue(report.total1to30().doubleValue());
+            total1to30.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell total31to60 = totalsRow.createCell(3);
+            total31to60.setCellValue(report.total31to60().doubleValue());
+            total31to60.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell total61to90 = totalsRow.createCell(4);
+            total61to90.setCellValue(report.total61to90().doubleValue());
+            total61to90.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell total90Plus = totalsRow.createCell(5);
+            total90Plus.setCellValue(report.total90Plus().doubleValue());
+            total90Plus.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell grandTotal = totalsRow.createCell(6);
+            grandTotal.setCellValue(report.grandTotal().doubleValue());
+            grandTotal.setCellStyle(totalStyle);
+
+            // Auto-size columns
+            for (int i = 0; i < 7; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            workbook.write(baos);
+            log.info("Generated AR Aging Excel ({} bytes)", baos.size());
+            return baos.toByteArray();
+
+        } catch (IOException e) {
+            log.error("Failed to generate AR Aging Excel", e);
+            throw new RuntimeException("Failed to generate AR Aging Excel: " + e.getMessage(), e);
+        }
+    }
+
+    // ==================== AP AGING EXPORTS ====================
+
+    /**
+     * Exports AP Aging report to PDF format.
+     * Shows outstanding payables categorized by aging buckets (Current, 1-30, 31-60, 61-90, 90+ days).
+     */
+    public byte[] exportApAgingToPdf(ApAgingReport report, Company company) {
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            Document document = new Document(PageSize.A4.rotate()); // Landscape for more columns
+            PdfWriter.getInstance(document, baos);
+            document.open();
+
+            // Title
+            addReportTitle(document, company, "Accounts Payable Aging Report");
+            addReportSubtitle(document, "As of " + report.asOfDate().format(dateFormatter));
+
+            // Summary section
+            addSectionHeader(document, "Aging Summary by Supplier");
+
+            PdfPTable summaryTable = new PdfPTable(7);
+            summaryTable.setWidthPercentage(100);
+            summaryTable.setWidths(new float[]{3f, 1.5f, 1.5f, 1.5f, 1.5f, 1.5f, 2f});
+
+            addTableHeader(summaryTable, "Supplier");
+            addTableHeader(summaryTable, "Current");
+            addTableHeader(summaryTable, "1-30 Days");
+            addTableHeader(summaryTable, "31-60 Days");
+            addTableHeader(summaryTable, "61-90 Days");
+            addTableHeader(summaryTable, "90+ Days");
+            addTableHeader(summaryTable, "Total");
+
+            boolean alternate = false;
+            for (ApAgingSupplierSummary summary : report.supplierSummaries()) {
+                Color bg = alternate ? ALT_ROW_BG : Color.WHITE;
+                addTableCell(summaryTable, summary.supplier().getName(), bg, Element.ALIGN_LEFT);
+                addTableCell(summaryTable, formatCurrency(summary.current()), bg, Element.ALIGN_RIGHT);
+                addAgingCell(summaryTable, summary.days1to30(), bg, 1);
+                addAgingCell(summaryTable, summary.days31to60(), bg, 31);
+                addAgingCell(summaryTable, summary.days61to90(), bg, 61);
+                addAgingCell(summaryTable, summary.days90Plus(), bg, 91);
+                addTableCell(summaryTable, formatCurrency(summary.total()), bg, Element.ALIGN_RIGHT);
+                alternate = !alternate;
+            }
+
+            // Totals row
+            addTotalCell(summaryTable, "Totals");
+            addTotalCell(summaryTable, formatCurrency(report.totalCurrent()));
+            addTotalCell(summaryTable, formatCurrency(report.total1to30()));
+            addTotalCell(summaryTable, formatCurrency(report.total31to60()));
+            addTotalCell(summaryTable, formatCurrency(report.total61to90()));
+            addTotalCell(summaryTable, formatCurrency(report.total90Plus()));
+            addTotalCell(summaryTable, formatCurrency(report.grandTotal()));
+
+            document.add(summaryTable);
+
+            // Grand total highlight
+            document.add(Chunk.NEWLINE);
+            PdfPTable grandTotalTable = new PdfPTable(2);
+            grandTotalTable.setWidthPercentage(50);
+            grandTotalTable.setHorizontalAlignment(Element.ALIGN_RIGHT);
+
+            PdfPCell labelCell = new PdfPCell(new Phrase("Total Outstanding Payables", TOTAL_FONT));
+            labelCell.setBorder(Rectangle.TOP);
+            labelCell.setBorderWidth(2);
+            labelCell.setPadding(10);
+            labelCell.setBackgroundColor(TOTAL_BG);
+            grandTotalTable.addCell(labelCell);
+
+            PdfPCell amountCell = new PdfPCell(new Phrase(formatCurrency(report.grandTotal()), TOTAL_FONT));
+            amountCell.setBorder(Rectangle.TOP);
+            amountCell.setBorderWidth(2);
+            amountCell.setPadding(10);
+            amountCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            amountCell.setBackgroundColor(TOTAL_BG);
+            grandTotalTable.addCell(amountCell);
+
+            document.add(grandTotalTable);
+
+            addReportFooter(document);
+            document.close();
+
+            log.info("Generated AP Aging PDF ({} bytes)", baos.size());
+            return baos.toByteArray();
+
+        } catch (Exception e) {
+            log.error("Failed to generate AP Aging PDF", e);
+            throw new RuntimeException("Failed to generate AP Aging PDF: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Exports AP Aging report to Excel format.
+     */
+    public byte[] exportApAgingToExcel(ApAgingReport report, Company company) {
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+
+            Sheet sheet = workbook.createSheet("AP Aging");
+            int rowNum = 0;
+
+            CellStyle headerStyle = createHeaderStyle(workbook);
+            CellStyle currencyStyle = createCurrencyStyle(workbook);
+            CellStyle titleStyle = createTitleStyle(workbook);
+            CellStyle totalStyle = createTotalStyle(workbook);
+
+            // Title
+            org.apache.poi.ss.usermodel.Row titleRow = sheet.createRow(rowNum++);
+            org.apache.poi.ss.usermodel.Cell titleCell = titleRow.createCell(0);
+            titleCell.setCellValue(company.getName() + " - Accounts Payable Aging Report");
+            titleCell.setCellStyle(titleStyle);
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 6));
+
+            // As of date
+            org.apache.poi.ss.usermodel.Row dateRow = sheet.createRow(rowNum++);
+            dateRow.createCell(0).setCellValue("As of " + report.asOfDate().format(dateFormatter));
+
+            rowNum++; // Empty row
+
+            // Header row
+            org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(rowNum++);
+            String[] headers = {"Supplier", "Current", "1-30 Days", "31-60 Days", "61-90 Days", "90+ Days", "Total"};
+            for (int i = 0; i < headers.length; i++) {
+                org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // Data rows
+            for (ApAgingSupplierSummary summary : report.supplierSummaries()) {
+                org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(summary.supplier().getName());
+
+                org.apache.poi.ss.usermodel.Cell currentCell = row.createCell(1);
+                currentCell.setCellValue(summary.current().doubleValue());
+                currentCell.setCellStyle(currencyStyle);
+
+                org.apache.poi.ss.usermodel.Cell days1to30Cell = row.createCell(2);
+                days1to30Cell.setCellValue(summary.days1to30().doubleValue());
+                days1to30Cell.setCellStyle(currencyStyle);
+
+                org.apache.poi.ss.usermodel.Cell days31to60Cell = row.createCell(3);
+                days31to60Cell.setCellValue(summary.days31to60().doubleValue());
+                days31to60Cell.setCellStyle(currencyStyle);
+
+                org.apache.poi.ss.usermodel.Cell days61to90Cell = row.createCell(4);
+                days61to90Cell.setCellValue(summary.days61to90().doubleValue());
+                days61to90Cell.setCellStyle(currencyStyle);
+
+                org.apache.poi.ss.usermodel.Cell days90PlusCell = row.createCell(5);
+                days90PlusCell.setCellValue(summary.days90Plus().doubleValue());
+                days90PlusCell.setCellStyle(currencyStyle);
+
+                org.apache.poi.ss.usermodel.Cell totalCell = row.createCell(6);
+                totalCell.setCellValue(summary.total().doubleValue());
+                totalCell.setCellStyle(currencyStyle);
+            }
+
+            // Totals row
+            org.apache.poi.ss.usermodel.Row totalsRow = sheet.createRow(rowNum);
+            org.apache.poi.ss.usermodel.Cell totalLabel = totalsRow.createCell(0);
+            totalLabel.setCellValue("Totals");
+            totalLabel.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell totalCurrent = totalsRow.createCell(1);
+            totalCurrent.setCellValue(report.totalCurrent().doubleValue());
+            totalCurrent.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell total1to30 = totalsRow.createCell(2);
+            total1to30.setCellValue(report.total1to30().doubleValue());
+            total1to30.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell total31to60 = totalsRow.createCell(3);
+            total31to60.setCellValue(report.total31to60().doubleValue());
+            total31to60.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell total61to90 = totalsRow.createCell(4);
+            total61to90.setCellValue(report.total61to90().doubleValue());
+            total61to90.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell total90Plus = totalsRow.createCell(5);
+            total90Plus.setCellValue(report.total90Plus().doubleValue());
+            total90Plus.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell grandTotal = totalsRow.createCell(6);
+            grandTotal.setCellValue(report.grandTotal().doubleValue());
+            grandTotal.setCellStyle(totalStyle);
+
+            // Auto-size columns
+            for (int i = 0; i < 7; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            workbook.write(baos);
+            log.info("Generated AP Aging Excel ({} bytes)", baos.size());
+            return baos.toByteArray();
+
+        } catch (IOException e) {
+            log.error("Failed to generate AP Aging Excel", e);
+            throw new RuntimeException("Failed to generate AP Aging Excel: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Helper method to add colored aging cells based on days overdue.
+     * Current amounts are black, overdue amounts are shown in red shades.
+     */
+    private void addAgingCell(PdfPTable table, BigDecimal amount, Color bgColor, int daysOverdue) {
+        Color textColor = Color.BLACK;
+        if (amount.compareTo(BigDecimal.ZERO) > 0 && daysOverdue > 0) {
+            // Show overdue amounts in red
+            textColor = LOSS_COLOR;
+        }
+        PdfPCell cell = new PdfPCell(new Phrase(formatCurrency(amount), new Font(Font.HELVETICA, 9, Font.NORMAL, textColor)));
+        cell.setBackgroundColor(bgColor);
+        cell.setPadding(6);
+        cell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        cell.setBorderColor(Color.LIGHT_GRAY);
+        table.addCell(cell);
+    }
 }

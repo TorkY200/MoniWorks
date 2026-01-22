@@ -2,6 +2,7 @@ package com.example.application.ui.views;
 
 import com.example.application.domain.Budget;
 import com.example.application.domain.Company;
+import com.example.application.domain.Contact;
 import com.example.application.domain.Department;
 import com.example.application.service.*;
 import com.example.application.service.ReportingService.*;
@@ -61,6 +62,8 @@ public class ReportsView extends VerticalLayout {
     private final VerticalLayout profitLossContent = new VerticalLayout();
     private final VerticalLayout balanceSheetContent = new VerticalLayout();
     private final VerticalLayout budgetVsActualContent = new VerticalLayout();
+    private final VerticalLayout arAgingContent = new VerticalLayout();
+    private final VerticalLayout apAgingContent = new VerticalLayout();
 
     // Department filter for P&L
     private ComboBox<Department> plDepartmentFilter;
@@ -74,12 +77,20 @@ public class ReportsView extends VerticalLayout {
     private HorizontalLayout plExportButtons;
     private HorizontalLayout bsExportButtons;
     private HorizontalLayout bvaExportButtons;
+    private HorizontalLayout arAgingExportButtons;
+    private HorizontalLayout apAgingExportButtons;
+
+    // Date pickers for aging reports
+    private DatePicker arAgingAsOfDate;
+    private DatePicker apAgingAsOfDate;
 
     // Current report data for exports
     private TrialBalance currentTrialBalance;
     private ProfitAndLoss currentProfitAndLoss;
     private BalanceSheet currentBalanceSheet;
     private BudgetVsActual currentBudgetVsActual;
+    private ArAgingReport currentArAgingReport;
+    private ApAgingReport currentApAgingReport;
 
     private static final DecimalFormat MONEY_FORMAT = new DecimalFormat("#,##0.00");
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd MMM yyyy");
@@ -181,6 +192,16 @@ public class ReportsView extends VerticalLayout {
         Tab budgetVsActualTab = new Tab(VaadinIcon.CHART.create(), new Span("Budget vs Actual"));
         VerticalLayout budgetVsActualLayout = createBudgetVsActualTab();
         tabSheet.add(budgetVsActualTab, budgetVsActualLayout);
+
+        // AR Aging Tab
+        Tab arAgingTab = new Tab(VaadinIcon.INVOICE.create(), new Span("AR Aging"));
+        VerticalLayout arAgingLayout = createArAgingTab();
+        tabSheet.add(arAgingTab, arAgingLayout);
+
+        // AP Aging Tab
+        Tab apAgingTab = new Tab(VaadinIcon.RECORDS.create(), new Span("AP Aging"));
+        VerticalLayout apAgingLayout = createApAgingTab();
+        tabSheet.add(apAgingTab, apAgingLayout);
 
         return tabSheet;
     }
@@ -670,6 +691,296 @@ public class ReportsView extends VerticalLayout {
         return layout;
     }
 
+    private VerticalLayout createArAgingTab() {
+        VerticalLayout layout = new VerticalLayout();
+        layout.setSizeFull();
+        layout.setPadding(false);
+
+        arAgingAsOfDate = new DatePicker("As Of Date");
+        arAgingAsOfDate.setWidth("180px");
+        arAgingAsOfDate.setValue(LocalDate.now());
+
+        Button generateBtn = new Button("Generate Report", VaadinIcon.REFRESH.create());
+        generateBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        generateBtn.addClickListener(e -> loadArAging());
+
+        // Export buttons container
+        arAgingExportButtons = new HorizontalLayout();
+        arAgingExportButtons.setSpacing(true);
+        arAgingExportButtons.setVisible(false);
+
+        HorizontalLayout controls = new HorizontalLayout(arAgingAsOfDate, generateBtn, arAgingExportButtons);
+        controls.setAlignItems(FlexComponent.Alignment.BASELINE);
+        controls.setSpacing(true);
+
+        arAgingContent.setSizeFull();
+        arAgingContent.setPadding(false);
+
+        layout.add(controls, arAgingContent);
+        return layout;
+    }
+
+    private VerticalLayout createApAgingTab() {
+        VerticalLayout layout = new VerticalLayout();
+        layout.setSizeFull();
+        layout.setPadding(false);
+
+        apAgingAsOfDate = new DatePicker("As Of Date");
+        apAgingAsOfDate.setWidth("180px");
+        apAgingAsOfDate.setValue(LocalDate.now());
+
+        Button generateBtn = new Button("Generate Report", VaadinIcon.REFRESH.create());
+        generateBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        generateBtn.addClickListener(e -> loadApAging());
+
+        // Export buttons container
+        apAgingExportButtons = new HorizontalLayout();
+        apAgingExportButtons.setSpacing(true);
+        apAgingExportButtons.setVisible(false);
+
+        HorizontalLayout controls = new HorizontalLayout(apAgingAsOfDate, generateBtn, apAgingExportButtons);
+        controls.setAlignItems(FlexComponent.Alignment.BASELINE);
+        controls.setSpacing(true);
+
+        apAgingContent.setSizeFull();
+        apAgingContent.setPadding(false);
+
+        layout.add(controls, apAgingContent);
+        return layout;
+    }
+
+    private void loadArAging() {
+        if (arAgingAsOfDate.isEmpty()) {
+            Notification.show("Please select a date", 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            return;
+        }
+
+        try {
+            Company company = companyContextService.getCurrentCompany();
+            ArAgingReport report = reportingService.generateArAging(company, arAgingAsOfDate.getValue());
+            displayArAging(report);
+        } catch (Exception e) {
+            Notification.show("Error generating report: " + e.getMessage(),
+                3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+        }
+    }
+
+    private void displayArAging(ArAgingReport report) {
+        arAgingContent.removeAll();
+        currentArAgingReport = report;
+        updateArAgingExportButtons();
+
+        // Report header
+        H3 header = new H3("Accounts Receivable Aging Report");
+        Span asOfDate = new Span("As of " + report.asOfDate().format(DATE_FORMAT));
+        asOfDate.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+        // Summary by customer grid
+        H3 summaryHeader = new H3("Aging Summary by Customer");
+        summaryHeader.getStyle().set("margin-top", "16px");
+
+        Grid<ArAgingCustomerSummary> summaryGrid = new Grid<>();
+        summaryGrid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES, GridVariant.LUMO_COMPACT);
+
+        summaryGrid.addColumn(summary -> summary.customer().getName())
+            .setHeader("Customer")
+            .setFlexGrow(1);
+
+        summaryGrid.addColumn(summary -> formatMoney(summary.current()))
+            .setHeader("Current")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        summaryGrid.addColumn(summary -> formatMoney(summary.days1to30()))
+            .setHeader("1-30 Days")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        summaryGrid.addColumn(summary -> formatMoney(summary.days31to60()))
+            .setHeader("31-60 Days")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        summaryGrid.addColumn(summary -> formatMoney(summary.days61to90()))
+            .setHeader("61-90 Days")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        summaryGrid.addColumn(summary -> formatMoney(summary.days90Plus()))
+            .setHeader("90+ Days")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        summaryGrid.addColumn(summary -> formatMoney(summary.total()))
+            .setHeader("Total")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        summaryGrid.setItems(report.customerSummaries());
+        summaryGrid.setAllRowsVisible(true);
+
+        // Totals row
+        HorizontalLayout totalsRow = new HorizontalLayout();
+        totalsRow.setWidthFull();
+        totalsRow.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
+        totalsRow.getStyle().set("font-weight", "bold");
+        totalsRow.getStyle().set("padding", "8px");
+        totalsRow.getStyle().set("border-top", "2px solid var(--lumo-contrast-20pct)");
+
+        Span totalLabel = new Span("Totals:");
+        Span totalCurrent = new Span(formatMoney(report.totalCurrent()));
+        Span total1to30 = new Span(formatMoney(report.total1to30()));
+        Span total31to60 = new Span(formatMoney(report.total31to60()));
+        Span total61to90 = new Span(formatMoney(report.total61to90()));
+        Span total90Plus = new Span(formatMoney(report.total90Plus()));
+        Span grandTotal = new Span(formatMoney(report.grandTotal()));
+
+        totalCurrent.getStyle().set("width", "100px").set("text-align", "right");
+        total1to30.getStyle().set("width", "100px").set("text-align", "right");
+        total31to60.getStyle().set("width", "100px").set("text-align", "right");
+        total61to90.getStyle().set("width", "100px").set("text-align", "right");
+        total90Plus.getStyle().set("width", "100px").set("text-align", "right").set("color", "var(--lumo-error-text-color)");
+        grandTotal.getStyle().set("width", "100px").set("text-align", "right");
+
+        totalsRow.add(totalLabel, totalCurrent, total1to30, total31to60, total61to90, total90Plus, grandTotal);
+
+        // Grand total highlight
+        HorizontalLayout grandTotalRow = new HorizontalLayout();
+        grandTotalRow.setWidthFull();
+        grandTotalRow.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        grandTotalRow.getStyle()
+            .set("font-weight", "bold")
+            .set("font-size", "var(--lumo-font-size-l)")
+            .set("padding", "12px")
+            .set("margin-top", "16px")
+            .set("border-top", "3px solid var(--lumo-contrast-30pct)")
+            .set("background-color", "var(--lumo-contrast-5pct)");
+
+        Span grandTotalLabel = new Span("Total Outstanding Receivables");
+        Span grandTotalAmount = new Span(formatMoney(report.grandTotal()));
+        grandTotalRow.add(grandTotalLabel, grandTotalAmount);
+
+        arAgingContent.add(header, asOfDate, summaryHeader, summaryGrid, totalsRow, grandTotalRow);
+    }
+
+    private void loadApAging() {
+        if (apAgingAsOfDate.isEmpty()) {
+            Notification.show("Please select a date", 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            return;
+        }
+
+        try {
+            Company company = companyContextService.getCurrentCompany();
+            ApAgingReport report = reportingService.generateApAging(company, apAgingAsOfDate.getValue());
+            displayApAging(report);
+        } catch (Exception e) {
+            Notification.show("Error generating report: " + e.getMessage(),
+                3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+        }
+    }
+
+    private void displayApAging(ApAgingReport report) {
+        apAgingContent.removeAll();
+        currentApAgingReport = report;
+        updateApAgingExportButtons();
+
+        // Report header
+        H3 header = new H3("Accounts Payable Aging Report");
+        Span asOfDate = new Span("As of " + report.asOfDate().format(DATE_FORMAT));
+        asOfDate.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+        // Summary by supplier grid
+        H3 summaryHeader = new H3("Aging Summary by Supplier");
+        summaryHeader.getStyle().set("margin-top", "16px");
+
+        Grid<ApAgingSupplierSummary> summaryGrid = new Grid<>();
+        summaryGrid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES, GridVariant.LUMO_COMPACT);
+
+        summaryGrid.addColumn(summary -> summary.supplier().getName())
+            .setHeader("Supplier")
+            .setFlexGrow(1);
+
+        summaryGrid.addColumn(summary -> formatMoney(summary.current()))
+            .setHeader("Current")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        summaryGrid.addColumn(summary -> formatMoney(summary.days1to30()))
+            .setHeader("1-30 Days")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        summaryGrid.addColumn(summary -> formatMoney(summary.days31to60()))
+            .setHeader("31-60 Days")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        summaryGrid.addColumn(summary -> formatMoney(summary.days61to90()))
+            .setHeader("61-90 Days")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        summaryGrid.addColumn(summary -> formatMoney(summary.days90Plus()))
+            .setHeader("90+ Days")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        summaryGrid.addColumn(summary -> formatMoney(summary.total()))
+            .setHeader("Total")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        summaryGrid.setItems(report.supplierSummaries());
+        summaryGrid.setAllRowsVisible(true);
+
+        // Totals row
+        HorizontalLayout totalsRow = new HorizontalLayout();
+        totalsRow.setWidthFull();
+        totalsRow.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
+        totalsRow.getStyle().set("font-weight", "bold");
+        totalsRow.getStyle().set("padding", "8px");
+        totalsRow.getStyle().set("border-top", "2px solid var(--lumo-contrast-20pct)");
+
+        Span totalLabel = new Span("Totals:");
+        Span totalCurrent = new Span(formatMoney(report.totalCurrent()));
+        Span total1to30 = new Span(formatMoney(report.total1to30()));
+        Span total31to60 = new Span(formatMoney(report.total31to60()));
+        Span total61to90 = new Span(formatMoney(report.total61to90()));
+        Span total90Plus = new Span(formatMoney(report.total90Plus()));
+        Span grandTotal = new Span(formatMoney(report.grandTotal()));
+
+        totalCurrent.getStyle().set("width", "100px").set("text-align", "right");
+        total1to30.getStyle().set("width", "100px").set("text-align", "right");
+        total31to60.getStyle().set("width", "100px").set("text-align", "right");
+        total61to90.getStyle().set("width", "100px").set("text-align", "right");
+        total90Plus.getStyle().set("width", "100px").set("text-align", "right").set("color", "var(--lumo-error-text-color)");
+        grandTotal.getStyle().set("width", "100px").set("text-align", "right");
+
+        totalsRow.add(totalLabel, totalCurrent, total1to30, total31to60, total61to90, total90Plus, grandTotal);
+
+        // Grand total highlight
+        HorizontalLayout grandTotalRow = new HorizontalLayout();
+        grandTotalRow.setWidthFull();
+        grandTotalRow.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        grandTotalRow.getStyle()
+            .set("font-weight", "bold")
+            .set("font-size", "var(--lumo-font-size-l)")
+            .set("padding", "12px")
+            .set("margin-top", "16px")
+            .set("border-top", "3px solid var(--lumo-contrast-30pct)")
+            .set("background-color", "var(--lumo-contrast-5pct)");
+
+        Span grandTotalLabel = new Span("Total Outstanding Payables");
+        Span grandTotalAmount = new Span(formatMoney(report.grandTotal()));
+        grandTotalRow.add(grandTotalLabel, grandTotalAmount);
+
+        apAgingContent.add(header, asOfDate, summaryHeader, summaryGrid, totalsRow, grandTotalRow);
+    }
+
     private void loadBudgetVsActual() {
         if (startDatePicker.isEmpty() || endDatePicker.isEmpty()) {
             Notification.show("Please select a date range", 3000, Notification.Position.MIDDLE)
@@ -954,5 +1265,85 @@ public class ReportsView extends VerticalLayout {
 
         bvaExportButtons.add(pdfLink, excelLink);
         bvaExportButtons.setVisible(true);
+    }
+
+    private void updateArAgingExportButtons() {
+        arAgingExportButtons.removeAll();
+        if (currentArAgingReport == null) {
+            arAgingExportButtons.setVisible(false);
+            return;
+        }
+
+        Company company = companyContextService.getCurrentCompany();
+        String dateStr = currentArAgingReport.asOfDate().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+
+        // PDF Export
+        StreamResource pdfResource = new StreamResource(
+            "AR_Aging_" + dateStr + ".pdf",
+            () -> new ByteArrayInputStream(
+                reportExportService.exportArAgingToPdf(currentArAgingReport, company)
+            )
+        );
+        Anchor pdfLink = new Anchor(pdfResource, "");
+        pdfLink.getElement().setAttribute("download", true);
+        Button pdfBtn = new Button("PDF", VaadinIcon.FILE_TEXT.create());
+        pdfBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+        pdfLink.add(pdfBtn);
+
+        // Excel Export
+        StreamResource excelResource = new StreamResource(
+            "AR_Aging_" + dateStr + ".xlsx",
+            () -> new ByteArrayInputStream(
+                reportExportService.exportArAgingToExcel(currentArAgingReport, company)
+            )
+        );
+        Anchor excelLink = new Anchor(excelResource, "");
+        excelLink.getElement().setAttribute("download", true);
+        Button excelBtn = new Button("Excel", VaadinIcon.FILE_TABLE.create());
+        excelBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+        excelLink.add(excelBtn);
+
+        arAgingExportButtons.add(pdfLink, excelLink);
+        arAgingExportButtons.setVisible(true);
+    }
+
+    private void updateApAgingExportButtons() {
+        apAgingExportButtons.removeAll();
+        if (currentApAgingReport == null) {
+            apAgingExportButtons.setVisible(false);
+            return;
+        }
+
+        Company company = companyContextService.getCurrentCompany();
+        String dateStr = currentApAgingReport.asOfDate().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+
+        // PDF Export
+        StreamResource pdfResource = new StreamResource(
+            "AP_Aging_" + dateStr + ".pdf",
+            () -> new ByteArrayInputStream(
+                reportExportService.exportApAgingToPdf(currentApAgingReport, company)
+            )
+        );
+        Anchor pdfLink = new Anchor(pdfResource, "");
+        pdfLink.getElement().setAttribute("download", true);
+        Button pdfBtn = new Button("PDF", VaadinIcon.FILE_TEXT.create());
+        pdfBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+        pdfLink.add(pdfBtn);
+
+        // Excel Export
+        StreamResource excelResource = new StreamResource(
+            "AP_Aging_" + dateStr + ".xlsx",
+            () -> new ByteArrayInputStream(
+                reportExportService.exportApAgingToExcel(currentApAgingReport, company)
+            )
+        );
+        Anchor excelLink = new Anchor(excelResource, "");
+        excelLink.getElement().setAttribute("download", true);
+        Button excelBtn = new Button("Excel", VaadinIcon.FILE_TABLE.create());
+        excelBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+        excelLink.add(excelBtn);
+
+        apAgingExportButtons.add(pdfLink, excelLink);
+        apAgingExportButtons.setVisible(true);
     }
 }

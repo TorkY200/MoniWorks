@@ -309,10 +309,13 @@ Per specs, Release 1 must deliver:
   - Categorizes by aging buckets: Current, 1-30, 31-60, 61-90, 90+ days
   - Updated ReportingServiceTest with new constructor parameters
   - Statement PDF generation
-- [ ] AR/AP aging reports (spec 13)
-  - Add AR aging report to ReportingService (30/60/90+ day buckets)
-  - Add AP aging report to ReportingService
-  - Add to ReportsView with PDF/Excel export
+- [x] AR/AP aging reports UI and export (spec 13)
+  - Added AR Aging tab to ReportsView with customer summary grid
+  - Added AP Aging tab to ReportsView with supplier summary grid
+  - Added exportArAgingToPdf() and exportArAgingToExcel() to ReportExportService
+  - Added exportApAgingToPdf() and exportApAgingToExcel() to ReportExportService
+  - Aging buckets: Current, 1-30, 31-60, 61-90, 90+ days
+  - PDF/Excel export buttons visible after generating reports
 
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
@@ -351,6 +354,7 @@ Per specs, Release 1 must deliver:
 - When adding new constructor parameters to services (like ReportingService AR/AP repos), must update unit tests
 - Statement generation uses findOutstandingByCompanyAndContact which filters by balance > 0 already
 - AR/AP Aging reports categorize by days overdue using ChronoUnit.DAYS.between(dueDate, asOfDate)
+- Vaadin Grid Column does not have setClassNameGenerator() method - use Grid.setClassNameGenerator() on the grid instead
 
 ## Technical Notes
 - Build: `./mvnw compile`
