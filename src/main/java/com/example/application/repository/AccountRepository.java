@@ -29,4 +29,7 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     @Query("SELECT a FROM Account a WHERE a.company.id = :companyId AND a.type = :type ORDER BY a.code")
     List<Account> findByCompanyIdAndType(@Param("companyId") Long companyId,
                                          @Param("type") Account.AccountType type);
+
+    @Query("SELECT a FROM Account a WHERE a.company = :company AND a.bankAccount = true AND a.active = true ORDER BY a.code")
+    List<Account> findBankAccountsByCompany(@Param("company") Company company);
 }

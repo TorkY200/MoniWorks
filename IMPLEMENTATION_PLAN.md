@@ -21,8 +21,8 @@ Per specs, Release 1 must deliver:
 4. Cashbook transactions (Payments, Receipts, Journals) - DONE
 5. Posting to immutable ledger - DONE
 6. GST/Tax coding and returns - Tax codes on transactions done, returns pending
-7. Bank import (QIF/OFX) and reconciliation - PENDING
-8. Financial reports (Trial Balance, P&L, Balance Sheet) - PENDING
+7. Bank import (QIF/OFX) and reconciliation - Partial - bank account linking done, import service created
+8. Financial reports (Trial Balance, P&L, Balance Sheet) - DONE
 9. Attachments for source documents - PENDING
 10. Audit trail - Core logging done, UI pending
 
@@ -55,8 +55,14 @@ Per specs, Release 1 must deliver:
   - Added "Create default NZ GST codes" button for quick setup
   - Added Tax Codes navigation item to MainLayout with calculator icon
 - [ ] Tax calculation on transactions
-- [ ] Bank account linking (mark accounts as bank accounts)
-- [ ] Bank import (OFX/QIF parsing)
+- [x] Bank account linking (mark accounts as bank accounts)
+  - Added bank account fields to Account entity (isBankAccount, bankName, bankNumber, bankCurrency)
+  - Created V2__bank_accounts.sql migration
+  - Created BankStatementImport, BankFeedItem, AllocationRule entities
+  - Created BankImportService with QIF, OFX, and CSV parsing
+  - Updated AccountsView with bank account configuration fields
+- [x] Bank import (OFX/QIF parsing)
+  - Implemented in BankImportService with support for QIF, OFX, and CSV formats
 - [ ] Reconciliation matching UI
 
 ### Phase 4: Reports & Polish

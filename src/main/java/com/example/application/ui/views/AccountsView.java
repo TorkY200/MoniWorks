@@ -97,6 +97,10 @@ public class AccountsView extends VerticalLayout {
             .setHeader("Tax Code")
             .setAutoWidth(true);
 
+        grid.addColumn(account -> account.isBankAccount() ? "Bank" : "")
+            .setHeader("Bank")
+            .setAutoWidth(true);
+
         grid.addColumn(account -> account.isActive() ? "Active" : "Inactive")
             .setHeader("Status")
             .setAutoWidth(true);
@@ -251,7 +255,33 @@ public class AccountsView extends VerticalLayout {
         Checkbox activeCheckbox = new Checkbox("Active");
         activeCheckbox.setValue(true);
 
-        form.add(codeField, nameField, typeCombo, parentCombo, taxCodeCombo, altCodeField, activeCheckbox);
+        // Bank account fields
+        Checkbox bankAccountCheckbox = new Checkbox("Bank Account");
+        bankAccountCheckbox.setHelperText("Enable for accounts linked to bank feeds");
+
+        TextField bankNameField = new TextField("Bank Name");
+        bankNameField.setMaxLength(100);
+        bankNameField.setVisible(false);
+
+        TextField bankNumberField = new TextField("Bank/Account Number");
+        bankNumberField.setMaxLength(50);
+        bankNumberField.setVisible(false);
+
+        TextField bankCurrencyField = new TextField("Currency");
+        bankCurrencyField.setMaxLength(3);
+        bankCurrencyField.setHelperText("e.g., NZD, USD");
+        bankCurrencyField.setVisible(false);
+
+        // Show/hide bank fields based on checkbox
+        bankAccountCheckbox.addValueChangeListener(e -> {
+            boolean isBankAccount = e.getValue();
+            bankNameField.setVisible(isBankAccount);
+            bankNumberField.setVisible(isBankAccount);
+            bankCurrencyField.setVisible(isBankAccount);
+        });
+
+        form.add(codeField, nameField, typeCombo, parentCombo, taxCodeCombo, altCodeField,
+                 activeCheckbox, bankAccountCheckbox, bankNameField, bankNumberField, bankCurrencyField);
         form.setResponsiveSteps(
             new FormLayout.ResponsiveStep("0", 1),
             new FormLayout.ResponsiveStep("400px", 2)
@@ -265,6 +295,17 @@ public class AccountsView extends VerticalLayout {
             parentCombo.setValue(account.getParent());
             activeCheckbox.setValue(account.isActive());
             altCodeField.setValue(account.getAltCode() != null ? account.getAltCode() : "");
+
+            // Bank account fields
+            bankAccountCheckbox.setValue(account.isBankAccount());
+            bankNameField.setValue(account.getBankName() != null ? account.getBankName() : "");
+            bankNumberField.setValue(account.getBankNumber() != null ? account.getBankNumber() : "");
+            bankCurrencyField.setValue(account.getBankCurrency() != null ? account.getBankCurrency() : "");
+            // Trigger visibility update
+            boolean isBankAccount = account.isBankAccount();
+            bankNameField.setVisible(isBankAccount);
+            bankNumberField.setVisible(isBankAccount);
+            bankCurrencyField.setVisible(isBankAccount);
 
             // Find matching tax code
             if (account.getTaxDefaultCode() != null) {
@@ -299,6 +340,13 @@ public class AccountsView extends VerticalLayout {
                     if (taxCodeCombo.getValue() != null) {
                         newAccount.setTaxDefaultCode(taxCodeCombo.getValue().getCode());
                     }
+                    // Bank account fields
+                    newAccount.setBankAccount(bankAccountCheckbox.getValue());
+                    if (bankAccountCheckbox.getValue()) {
+                        newAccount.setBankName(bankNameField.getValue().isBlank() ? null : bankNameField.getValue().trim());
+                        newAccount.setBankNumber(bankNumberField.getValue().isBlank() ? null : bankNumberField.getValue().trim());
+                        newAccount.setBankCurrency(bankCurrencyField.getValue().isBlank() ? null : bankCurrencyField.getValue().trim().toUpperCase());
+                    }
                     accountService.save(newAccount);
 
                     Notification.show("Account created successfully", 3000, Notification.Position.BOTTOM_START)
@@ -314,6 +362,17 @@ public class AccountsView extends VerticalLayout {
                         editAccount.setTaxDefaultCode(taxCodeCombo.getValue().getCode());
                     } else {
                         editAccount.setTaxDefaultCode(null);
+                    }
+                    // Bank account fields
+                    editAccount.setBankAccount(bankAccountCheckbox.getValue());
+                    if (bankAccountCheckbox.getValue()) {
+                        editAccount.setBankName(bankNameField.getValue().isBlank() ? null : bankNameField.getValue().trim());
+                        editAccount.setBankNumber(bankNumberField.getValue().isBlank() ? null : bankNumberField.getValue().trim());
+                        editAccount.setBankCurrency(bankCurrencyField.getValue().isBlank() ? null : bankCurrencyField.getValue().trim().toUpperCase());
+                    } else {
+                        editAccount.setBankName(null);
+                        editAccount.setBankNumber(null);
+                        editAccount.setBankCurrency(null);
                     }
                     accountService.save(editAccount);
 

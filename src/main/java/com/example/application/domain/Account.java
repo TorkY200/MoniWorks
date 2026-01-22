@@ -62,6 +62,22 @@ public class Account {
     @Column(name = "security_level")
     private Integer securityLevel;
 
+    // Bank account fields (optional, only used when isBankAccount = true)
+    @Column(name = "is_bank_account", nullable = false)
+    private boolean bankAccount = false;
+
+    @Size(max = 100)
+    @Column(name = "bank_name", length = 100)
+    private String bankName;
+
+    @Size(max = 50)
+    @Column(name = "bank_number", length = 50)
+    private String bankNumber;
+
+    @Size(max = 3)
+    @Column(name = "bank_currency", length = 3)
+    private String bankCurrency;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -177,5 +193,37 @@ public class Account {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public boolean isBankAccount() {
+        return bankAccount;
+    }
+
+    public void setBankAccount(boolean bankAccount) {
+        this.bankAccount = bankAccount;
+    }
+
+    public String getBankName() {
+        return bankName;
+    }
+
+    public void setBankName(String bankName) {
+        this.bankName = bankName;
+    }
+
+    public String getBankNumber() {
+        return bankNumber;
+    }
+
+    public void setBankNumber(String bankNumber) {
+        this.bankNumber = bankNumber;
+    }
+
+    public String getBankCurrency() {
+        return bankCurrency;
+    }
+
+    public void setBankCurrency(String bankCurrency) {
+        this.bankCurrency = bankCurrency;
     }
 }
