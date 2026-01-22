@@ -1,6 +1,7 @@
 package com.example.application.ui;
 
 import com.example.application.ui.views.AccountsView;
+import com.example.application.ui.views.AuditEventsView;
 import com.example.application.ui.views.BankReconciliationView;
 import com.example.application.ui.views.DashboardView;
 import com.example.application.ui.views.GstReturnsView;
@@ -73,6 +74,8 @@ public class MainLayout extends AppLayout {
             VaadinIcon.CHART.create()));
         nav.addItem(new SideNavItem("Periods", PeriodsView.class,
             VaadinIcon.CALENDAR.create()));
+        nav.addItem(new SideNavItem("Audit Trail", AuditEventsView.class,
+            VaadinIcon.LIST.create()));
 
         Scroller scroller = new Scroller(nav);
         scroller.addClassNames(LumoUtility.Padding.SMALL);

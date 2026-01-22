@@ -1,6 +1,7 @@
 package com.example.application.ui.views;
 
 import com.example.application.domain.*;
+import com.example.application.domain.AttachmentLink.EntityType;
 import com.example.application.domain.Transaction.TransactionType;
 import com.example.application.domain.TransactionLine.Direction;
 import com.example.application.service.*;
@@ -13,6 +14,7 @@ import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
+import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Span;
@@ -24,10 +26,15 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.component.upload.Upload;
+import com.vaadin.flow.component.upload.receivers.MemoryBuffer;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.StreamResource;
 import jakarta.annotation.security.PermitAll;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -48,6 +55,7 @@ public class TransactionsView extends VerticalLayout {
     private final AccountService accountService;
     private final TaxCodeService taxCodeService;
     private final CompanyContextService companyContextService;
+    private final AttachmentService attachmentService;
 
     private final Grid<Transaction> grid = new Grid<>();
     private final ComboBox<TransactionType> typeFilter = new ComboBox<>();
@@ -59,12 +67,14 @@ public class TransactionsView extends VerticalLayout {
                             PostingService postingService,
                             AccountService accountService,
                             TaxCodeService taxCodeService,
-                            CompanyContextService companyContextService) {
+                            CompanyContextService companyContextService,
+                            AttachmentService attachmentService) {
         this.transactionService = transactionService;
         this.postingService = postingService;
         this.accountService = accountService;
         this.taxCodeService = taxCodeService;
         this.companyContextService = companyContextService;
+        this.attachmentService = attachmentService;
 
         addClassName("transactions-view");
         setSizeFull();
@@ -378,6 +388,68 @@ public class TransactionsView extends VerticalLayout {
 
         updateBalance(lineEntries, balanceSpan);
 
+        // Attachments section
+        H3 attachmentsTitle = new H3("Attachments");
+
+        // List to track pending attachments for new transactions
+        List<PendingAttachment> pendingAttachments = new ArrayList<>();
+
+        // Container for existing and pending attachments
+        VerticalLayout attachmentsContainer = new VerticalLayout();
+        attachmentsContainer.setPadding(false);
+        attachmentsContainer.setSpacing(false);
+
+        // Load existing attachments if editing
+        if (!isNew && transaction.getId() != null) {
+            List<Attachment> existingAttachments = attachmentService.findByEntity(
+                EntityType.TRANSACTION, transaction.getId());
+            for (Attachment att : existingAttachments) {
+                attachmentsContainer.add(createExistingAttachmentRow(att, attachmentsContainer, transaction));
+            }
+        }
+
+        // Upload component
+        MemoryBuffer uploadBuffer = new MemoryBuffer();
+        Upload upload = new Upload(uploadBuffer);
+        upload.setAcceptedFileTypes(".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".tiff", ".bmp");
+        upload.setMaxFiles(5);
+        upload.setMaxFileSize(10 * 1024 * 1024); // 10 MB
+        upload.setDropLabel(new Span("Drop file here or click to upload"));
+
+        upload.addSucceededListener(event -> {
+            String fileName = event.getFileName();
+            String mimeType = event.getMIMEType();
+            try {
+                byte[] content = uploadBuffer.getInputStream().readAllBytes();
+                PendingAttachment pending = new PendingAttachment(fileName, mimeType, content);
+                pendingAttachments.add(pending);
+
+                // Add to UI
+                HorizontalLayout pendingRow = new HorizontalLayout();
+                pendingRow.setAlignItems(FlexComponent.Alignment.CENTER);
+                pendingRow.add(
+                    VaadinIcon.FILE.create(),
+                    new Span(fileName + " (pending)"),
+                    createRemovePendingButton(pending, pendingAttachments, pendingRow, attachmentsContainer)
+                );
+                attachmentsContainer.add(pendingRow);
+
+                Notification.show("File ready to upload: " + fileName,
+                    2000, Notification.Position.BOTTOM_START)
+                    .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+            } catch (IOException ex) {
+                Notification.show("Error reading file: " + ex.getMessage(),
+                    3000, Notification.Position.MIDDLE)
+                    .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            }
+        });
+
+        upload.addFailedListener(event -> {
+            Notification.show("Upload failed: " + event.getReason().getMessage(),
+                3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+        });
+
         // Footer buttons
         Button saveBtn = new Button("Save as Draft");
         saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
@@ -409,7 +481,10 @@ public class TransactionsView extends VerticalLayout {
                     transaction.addLine(line);
                 }
 
-                transactionService.save(transaction);
+                Transaction saved = transactionService.save(transaction);
+
+                // Save pending attachments
+                savePendingAttachments(pendingAttachments, saved);
 
                 Notification.show("Transaction saved", 3000, Notification.Position.BOTTOM_START)
                     .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
@@ -461,6 +536,10 @@ public class TransactionsView extends VerticalLayout {
                 }
 
                 Transaction saved = transactionService.save(transaction);
+
+                // Save pending attachments
+                savePendingAttachments(pendingAttachments, saved);
+
                 postingService.postTransaction(saved, null); // TODO: get current user
 
                 Notification.show("Transaction posted successfully", 3000, Notification.Position.BOTTOM_START)
@@ -480,7 +559,10 @@ public class TransactionsView extends VerticalLayout {
             linesTitle,
             linesGrid,
             addLineForm,
-            balanceSpan
+            balanceSpan,
+            attachmentsTitle,
+            attachmentsContainer,
+            upload
         );
         content.setPadding(false);
         content.setSpacing(true);
@@ -488,6 +570,54 @@ public class TransactionsView extends VerticalLayout {
         dialog.add(content);
         dialog.getFooter().add(cancelBtn, saveBtn, saveAndPostBtn);
         dialog.open();
+    }
+
+    private HorizontalLayout createExistingAttachmentRow(Attachment attachment,
+                                                          VerticalLayout container,
+                                                          Transaction transaction) {
+        HorizontalLayout row = new HorizontalLayout();
+        row.setAlignItems(FlexComponent.Alignment.CENTER);
+
+        // Create download link
+        StreamResource resource = new StreamResource(attachment.getFilename(), () -> {
+            try {
+                byte[] fileContent = attachmentService.getFileContent(attachment);
+                return new ByteArrayInputStream(fileContent);
+            } catch (Exception ex) {
+                return new ByteArrayInputStream(new byte[0]);
+            }
+        });
+
+        Anchor downloadLink = new Anchor(resource, attachment.getFilename());
+        downloadLink.getElement().setAttribute("download", true);
+
+        Span sizeSpan = new Span(" (" + attachment.getFormattedSize() + ")");
+        sizeSpan.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+        Button removeBtn = new Button(VaadinIcon.CLOSE_SMALL.create());
+        removeBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_ERROR);
+        removeBtn.getElement().setAttribute("title", "Remove attachment");
+        removeBtn.addClickListener(e -> {
+            attachmentService.unlinkFromEntity(attachment, EntityType.TRANSACTION, transaction.getId());
+            container.remove(row);
+            Notification.show("Attachment removed", 2000, Notification.Position.BOTTOM_START);
+        });
+
+        row.add(VaadinIcon.FILE.create(), downloadLink, sizeSpan, removeBtn);
+        return row;
+    }
+
+    private Button createRemovePendingButton(PendingAttachment pending,
+                                              List<PendingAttachment> pendingList,
+                                              HorizontalLayout row,
+                                              VerticalLayout container) {
+        Button removeBtn = new Button(VaadinIcon.CLOSE_SMALL.create());
+        removeBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_ERROR);
+        removeBtn.addClickListener(e -> {
+            pendingList.remove(pending);
+            container.remove(row);
+        });
+        return removeBtn;
     }
 
     private void updateBalance(List<LineEntry> lines, Span balanceSpan) {
@@ -521,7 +651,7 @@ public class TransactionsView extends VerticalLayout {
         Dialog dialog = new Dialog();
         dialog.setHeaderTitle(transaction.getType().name() + " - " +
             transaction.getTransactionDate().format(DATE_FORMAT));
-        dialog.setWidth("700px");
+        dialog.setWidth("750px");
 
         VerticalLayout content = new VerticalLayout();
         content.setPadding(false);
@@ -555,6 +685,54 @@ public class TransactionsView extends VerticalLayout {
 
         linesGrid.setItems(transaction.getLines());
         content.add(linesGrid);
+
+        // Attachments section
+        H3 attachmentsTitle = new H3("Attachments");
+        content.add(attachmentsTitle);
+
+        List<Attachment> attachments = attachmentService.findByEntity(
+            EntityType.TRANSACTION, transaction.getId());
+
+        if (attachments.isEmpty()) {
+            content.add(new Span("No attachments"));
+        } else {
+            VerticalLayout attachmentsList = new VerticalLayout();
+            attachmentsList.setPadding(false);
+            attachmentsList.setSpacing(false);
+
+            for (Attachment att : attachments) {
+                HorizontalLayout attachmentRow = new HorizontalLayout();
+                attachmentRow.setAlignItems(FlexComponent.Alignment.CENTER);
+
+                // Create download link
+                StreamResource resource = new StreamResource(att.getFilename(), () -> {
+                    try {
+                        byte[] fileContent = attachmentService.getFileContent(att);
+                        return new ByteArrayInputStream(fileContent);
+                    } catch (Exception ex) {
+                        Notification.show("Error loading file: " + ex.getMessage(),
+                            3000, Notification.Position.MIDDLE)
+                            .addThemeVariants(NotificationVariant.LUMO_ERROR);
+                        return new ByteArrayInputStream(new byte[0]);
+                    }
+                });
+
+                Anchor downloadLink = new Anchor(resource, att.getFilename());
+                downloadLink.getElement().setAttribute("download", true);
+
+                Span sizeSpan = new Span(" (" + att.getFormattedSize() + ")");
+                sizeSpan.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+                attachmentRow.add(
+                    VaadinIcon.FILE.create(),
+                    downloadLink,
+                    sizeSpan
+                );
+
+                attachmentsList.add(attachmentRow);
+            }
+            content.add(attachmentsList);
+        }
 
         Button closeBtn = new Button("Close", e -> dialog.close());
 
@@ -636,6 +814,45 @@ public class TransactionsView extends VerticalLayout {
             this.amount = line.getAmount();
             this.taxCode = line.getTaxCode();
             this.memo = line.getMemo();
+        }
+    }
+
+    /**
+     * Helper class to hold pending attachment data before transaction is saved.
+     */
+    private static class PendingAttachment {
+        String filename;
+        String mimeType;
+        byte[] content;
+
+        PendingAttachment(String filename, String mimeType, byte[] content) {
+            this.filename = filename;
+            this.mimeType = mimeType;
+            this.content = content;
+        }
+    }
+
+    /**
+     * Saves all pending attachments and links them to the transaction.
+     */
+    private void savePendingAttachments(List<PendingAttachment> pendingAttachments, Transaction transaction) {
+        Company company = companyContextService.getCurrentCompany();
+        for (PendingAttachment pending : pendingAttachments) {
+            try {
+                attachmentService.uploadAndLink(
+                    company,
+                    pending.filename,
+                    pending.mimeType,
+                    pending.content,
+                    null, // TODO: get current user
+                    EntityType.TRANSACTION,
+                    transaction.getId()
+                );
+            } catch (Exception ex) {
+                Notification.show("Failed to save attachment: " + pending.filename + " - " + ex.getMessage(),
+                    3000, Notification.Position.MIDDLE)
+                    .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            }
         }
     }
 }

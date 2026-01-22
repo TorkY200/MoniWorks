@@ -5,13 +5,14 @@
 - **Phase 1 Foundation COMPLETE** - Tag: 0.0.1
 - **Phase 2 Core Accounting COMPLETE** - Tag: 0.0.2
 - **Phase 3 Tax & Bank COMPLETE** - Tag: 0.0.3
-- All 27 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, ApplicationTest: 1)
-- Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule
+- **Phase 4 Reports & Polish COMPLETE** - Tag: 0.0.7
+- All 37 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, ApplicationTest: 1)
+- Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink
 - Database configured: H2 for development, PostgreSQL for production
-- Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql
-- All repository interfaces created (18 repositories)
-- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService
-- Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView
+- Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql
+- All repository interfaces created (20 repositories)
+- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService
+- Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView, AuditEventsView
 - Security configuration with SecurityConfig and UserDetailsServiceImpl (using VaadinSecurityConfigurer API)
 
 ## Release 1 (SLC) - Target Features
@@ -24,8 +25,8 @@ Per specs, Release 1 must deliver:
 6. GST/Tax coding and returns - DONE (tax calculation, TaxLine entities, GST return generation)
 7. Bank import (QIF/OFX) and reconciliation - DONE (import + reconciliation UI)
 8. Financial reports (Trial Balance, P&L, Balance Sheet) - DONE
-9. Attachments for source documents - PENDING
-10. Audit trail - Core logging done, UI pending
+9. Attachments for source documents - DONE (PDF/image upload, link to transactions)
+10. Audit trail - DONE (backend logging + AuditEventsView UI)
 
 ## Implementation Order
 
@@ -80,7 +81,7 @@ Per specs, Release 1 must deliver:
   - Creates balanced transactions (DR Bank / CR Account for receipts, etc.)
   - Posts transactions immediately after creation
 
-### Phase 4: Reports & Polish (IN PROGRESS)
+### Phase 4: Reports & Polish (COMPLETE) - Tag: 0.0.7
 - [x] Trial Balance report view
   - Created ReportsView.java with tabbed interface for all 3 financial reports
   - Date range pickers (from_date to to_date) for Trial Balance filtering
@@ -101,8 +102,22 @@ Per specs, Release 1 must deliver:
   - Created GstReturnsView with generate dialog, return grid, detail view
   - Returns show NZ GST boxes: 5 (sales), 6 (zero-rated), 7 (purchases), 9 (output tax), 11 (input tax), 12 (payable)
   - Support for finalize and mark-as-filed workflow
-- [ ] Attachments support
-- [ ] Audit event logging UI
+- [x] Attachments support
+  - Created Attachment entity (id, companyId, filename, mimeType, size, checksumSha256, storageKey, uploadedAt, uploadedBy)
+  - Created AttachmentLink entity for polymorphic entity linking (TRANSACTION, INVOICE, BILL, PRODUCT, CONTACT)
+  - Created V5__attachments.sql migration with proper indexes
+  - Created AttachmentRepository and AttachmentLinkRepository with deduplication and entity queries
+  - Created AttachmentService with file upload, SHA-256 checksum, storage to filesystem, deduplication by checksum
+  - Allowed file types: PDF, JPEG, PNG, GIF, WEBP, TIFF, BMP (max 10MB)
+  - Storage path configurable via moniworks.attachments.storage-path property
+  - Updated TransactionsView with attachment upload in edit dialog and display in view dialog
+  - Added 10 unit tests for AttachmentService (upload, validation, deduplication, retrieval, deletion)
+- [x] Audit event logging UI
+  - Created AuditEventsView.java with grid display of all audit events
+  - Filtering by event type, entity type, and date range
+  - Detail dialog showing event metadata and formatted JSON details
+  - Added Audit Trail navigation item to MainLayout
+  - Backend logging already integrated in PostingService, TaxReturnService, AttachmentService
 
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
@@ -111,6 +126,8 @@ Per specs, Release 1 must deliver:
 - TreeGrid requires TreeDataProvider with proper parent-child hierarchy setup
 - @VaadinSessionScope for session-scoped beans (like CompanyContextService)
 - When adding new dependencies to PostingService (like TaxCalculationService), update unit tests to include mocks
+- Vaadin 25+ deprecates MemoryBuffer and StreamResource - functionality still works but will need update in future versions
+- File attachments stored outside DB with checksums for integrity; deduplication by checksum within company scope
 
 ## Technical Notes
 - Build: `./mvnw compile`
@@ -129,3 +146,6 @@ Per specs, Release 1 must deliver:
 - Session-scoped CompanyContextService manages current company per user session
 - Tax calculation assumes tax-inclusive amounts (NZ standard) - extracts GST from totals
 - TaxLine records created during posting for audit trail and return generation
+- Attachments stored on filesystem with path: {storagePath}/{companyId}/{year}/{month}/{uuid}_{sanitizedFilename}
+- Attachment deduplication by SHA-256 checksum within company scope (avoids storing same file twice)
+- Audit events are append-only and immutable - no delete capability exposed in UI
