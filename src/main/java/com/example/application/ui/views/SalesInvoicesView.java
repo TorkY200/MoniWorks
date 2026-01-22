@@ -479,7 +479,7 @@ public class SalesInvoicesView extends VerticalLayout {
                     customerCombo.getValue(),
                     issueDatePicker.getValue(),
                     dueDatePicker.getValue(),
-                    null // TODO: Get current user
+                    companyContextService.getCurrentUser()
                 );
 
                 if (referenceField.getValue() != null && !referenceField.getValue().isBlank()) {

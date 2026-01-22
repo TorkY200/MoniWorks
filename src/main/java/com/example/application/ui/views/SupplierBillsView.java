@@ -479,7 +479,7 @@ public class SupplierBillsView extends VerticalLayout {
                     supplierCombo.getValue(),
                     billDatePicker.getValue(),
                     dueDatePicker.getValue(),
-                    null // TODO: Get current user
+                    companyContextService.getCurrentUser()
                 );
 
                 if (supplierRefField.getValue() != null && !supplierRefField.getValue().isBlank()) {

@@ -571,7 +571,7 @@ public class TransactionsView extends VerticalLayout {
                 // Save pending attachments
                 savePendingAttachments(pendingAttachments, saved);
 
-                postingService.postTransaction(saved, null); // TODO: get current user
+                postingService.postTransaction(saved, companyContextService.getCurrentUser());
 
                 Notification.show("Transaction posted successfully", 3000, Notification.Position.BOTTOM_START)
                     .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
@@ -774,7 +774,7 @@ public class TransactionsView extends VerticalLayout {
 
     private void postTransaction(Transaction transaction) {
         try {
-            postingService.postTransaction(transaction, null); // TODO: get current user
+            postingService.postTransaction(transaction, companyContextService.getCurrentUser());
             Notification.show("Transaction posted successfully", 3000, Notification.Position.BOTTOM_START)
                 .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
             loadTransactions();
@@ -875,7 +875,7 @@ public class TransactionsView extends VerticalLayout {
                     pending.filename,
                     pending.mimeType,
                     pending.content,
-                    null, // TODO: get current user
+                    companyContextService.getCurrentUser(),
                     EntityType.TRANSACTION,
                     transaction.getId()
                 );

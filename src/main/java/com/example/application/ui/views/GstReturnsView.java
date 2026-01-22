@@ -235,7 +235,7 @@ public class GstReturnsView extends VerticalLayout {
                     startDatePicker.getValue(),
                     endDatePicker.getValue(),
                     basisCombo.getValue(),
-                    null // TODO: get current user
+                    companyContextService.getCurrentUser()
                 );
 
                 Notification.show("GST return generated successfully",
