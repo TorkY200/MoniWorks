@@ -21,6 +21,7 @@
 - **Phase 13d Statement Runs UI COMPLETE** - Tag: 0.2.5
 - **Phase 14 SavedView Grid Integration COMPLETE** - Tag: 0.2.6
 - **Phase 15 User & Permission Management COMPLETE** - Tag: 0.2.7
+- **Phase 16 Cashflow Report & Quality Tooling COMPLETE** - Tag: 0.2.8
 - All 70 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, ApplicationTest: 1)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView
 - Database configured: H2 for development, PostgreSQL for production
@@ -431,6 +432,32 @@ Per specs, Release 1 must deliver:
     - removeUserFromCompany() for removing memberships
     - updateMembershipRole() for changing user roles within a company
     - getUserCompanies() for listing all companies a user belongs to
+
+### Phase 16: Cashflow Report & Quality Tooling (COMPLETE) - Tag: 0.2.8
+- [x] Cashflow Report (spec 13 - "Cashflow and bank register (basic)")
+  - Added generateCashflow() method to ReportingService
+  - CashflowStatement record with opening/closing balances, inflows, outflows, net cash flow
+  - CashflowAccountSummary record for per-bank-account breakdown
+  - CashflowLine record for individual cash movements
+  - Calculates opening balance (day before start) and closing balance (end date)
+  - Shows reconciliation status (opening + net = closing)
+  - Tracks inflows (debits to bank accounts) and outflows (credits from bank accounts)
+- [x] Cashflow Report Export (spec 13)
+  - Added exportCashflowToPdf() to ReportExportService
+  - Added exportCashflowToExcel() to ReportExportService
+  - PDF shows cash summary section and per-account breakdown
+  - Excel exports with full formatting and formulas
+- [x] Cashflow Tab in ReportsView
+  - Added "Cashflow" tab with date range selectors
+  - Cash summary section with opening, inflows, outflows, net, closing
+  - Bank account summary grid with per-account breakdown
+  - PDF and Excel export buttons after generating report
+- [x] Forbidden Token Scan Script (spec 16 quality tooling)
+  - Created scripts/check-forbidden-markers.sh
+  - Scans src/main/java and src/test/java for: TODO, FIXME, XXX, HACK, TEMP, WIP, STUB
+  - Uses word boundaries to avoid false positives (e.g., RECURRING_TEMPLATE)
+  - Returns exit code 1 if markers found (for CI integration)
+  - Added to AGENTS.md validation commands
 
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead

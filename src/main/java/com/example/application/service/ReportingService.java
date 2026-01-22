@@ -691,4 +691,147 @@ public class ReportingService {
         BigDecimal days90Plus,
         BigDecimal total
     ) {}
+
+    // ==================== CASHFLOW REPORT ====================
+
+    /**
+     * Generates a Cashflow Statement for the given date range.
+     * Shows cash inflows and outflows through bank accounts.
+     * This is a simplified cashflow report based on direct cash movements.
+     */
+    public CashflowStatement generateCashflow(Company company, LocalDate startDate, LocalDate endDate) {
+        // Get all bank accounts
+        List<Account> bankAccounts = accountRepository.findBankAccountsByCompany(company);
+
+        BigDecimal openingBalance = BigDecimal.ZERO;
+        BigDecimal closingBalance = BigDecimal.ZERO;
+        BigDecimal totalInflows = BigDecimal.ZERO;
+        BigDecimal totalOutflows = BigDecimal.ZERO;
+
+        List<CashflowAccountSummary> accountSummaries = new ArrayList<>();
+        List<CashflowLine> allLines = new ArrayList<>();
+
+        LocalDate dayBeforeStart = startDate.minusDays(1);
+
+        for (Account bankAccount : bankAccounts) {
+            // Calculate opening balance (as of day before start date)
+            BigDecimal accountOpeningBalance = ledgerEntryRepository.getBalanceByAccountAsOf(
+                bankAccount, dayBeforeStart);
+            if (accountOpeningBalance == null) accountOpeningBalance = BigDecimal.ZERO;
+
+            // Calculate closing balance (as of end date)
+            BigDecimal accountClosingBalance = ledgerEntryRepository.getBalanceByAccountAsOf(
+                bankAccount, endDate);
+            if (accountClosingBalance == null) accountClosingBalance = BigDecimal.ZERO;
+
+            // Get all entries for this bank account in the date range
+            List<LedgerEntry> entries = ledgerEntryRepository.findByAccountAndDateRange(
+                bankAccount, startDate, endDate);
+
+            BigDecimal accountInflows = BigDecimal.ZERO;
+            BigDecimal accountOutflows = BigDecimal.ZERO;
+
+            for (LedgerEntry entry : entries) {
+                // For bank accounts (assets), debits increase balance (inflows), credits decrease (outflows)
+                BigDecimal debit = entry.getAmountDr() != null ? entry.getAmountDr() : BigDecimal.ZERO;
+                BigDecimal credit = entry.getAmountCr() != null ? entry.getAmountCr() : BigDecimal.ZERO;
+
+                if (debit.compareTo(BigDecimal.ZERO) > 0) {
+                    accountInflows = accountInflows.add(debit);
+                    allLines.add(new CashflowLine(
+                        entry.getEntryDate(),
+                        bankAccount,
+                        entry.getTransaction() != null ? entry.getTransaction().getDescription() : "Entry",
+                        entry.getTransaction() != null ? entry.getTransaction().getReference() : null,
+                        debit,
+                        CashflowDirection.INFLOW
+                    ));
+                }
+                if (credit.compareTo(BigDecimal.ZERO) > 0) {
+                    accountOutflows = accountOutflows.add(credit);
+                    allLines.add(new CashflowLine(
+                        entry.getEntryDate(),
+                        bankAccount,
+                        entry.getTransaction() != null ? entry.getTransaction().getDescription() : "Entry",
+                        entry.getTransaction() != null ? entry.getTransaction().getReference() : null,
+                        credit,
+                        CashflowDirection.OUTFLOW
+                    ));
+                }
+            }
+
+            openingBalance = openingBalance.add(accountOpeningBalance);
+            closingBalance = closingBalance.add(accountClosingBalance);
+            totalInflows = totalInflows.add(accountInflows);
+            totalOutflows = totalOutflows.add(accountOutflows);
+
+            // Only add accounts with activity or balances
+            if (accountInflows.compareTo(BigDecimal.ZERO) != 0 ||
+                accountOutflows.compareTo(BigDecimal.ZERO) != 0 ||
+                accountOpeningBalance.compareTo(BigDecimal.ZERO) != 0) {
+                accountSummaries.add(new CashflowAccountSummary(
+                    bankAccount,
+                    accountOpeningBalance,
+                    accountInflows,
+                    accountOutflows,
+                    accountClosingBalance
+                ));
+            }
+        }
+
+        BigDecimal netCashFlow = totalInflows.subtract(totalOutflows);
+
+        // Sort lines by date
+        allLines.sort(Comparator.comparing(CashflowLine::date).thenComparing(l -> l.account().getCode()));
+
+        return new CashflowStatement(
+            startDate, endDate,
+            openingBalance, closingBalance,
+            totalInflows, totalOutflows, netCashFlow,
+            accountSummaries, allLines
+        );
+    }
+
+    // Cashflow Report records
+    public record CashflowStatement(
+        LocalDate startDate,
+        LocalDate endDate,
+        BigDecimal openingBalance,
+        BigDecimal closingBalance,
+        BigDecimal totalInflows,
+        BigDecimal totalOutflows,
+        BigDecimal netCashFlow,
+        List<CashflowAccountSummary> accountSummaries,
+        List<CashflowLine> lines
+    ) {
+        public boolean isReconciled() {
+            // Opening balance + net cash flow should equal closing balance
+            return openingBalance.add(netCashFlow).compareTo(closingBalance) == 0;
+        }
+    }
+
+    public record CashflowAccountSummary(
+        Account account,
+        BigDecimal openingBalance,
+        BigDecimal inflows,
+        BigDecimal outflows,
+        BigDecimal closingBalance
+    ) {
+        public BigDecimal netChange() {
+            return inflows.subtract(outflows);
+        }
+    }
+
+    public record CashflowLine(
+        LocalDate date,
+        Account account,
+        String description,
+        String reference,
+        BigDecimal amount,
+        CashflowDirection direction
+    ) {}
+
+    public enum CashflowDirection {
+        INFLOW, OUTFLOW
+    }
 }

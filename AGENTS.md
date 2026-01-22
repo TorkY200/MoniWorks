@@ -11,6 +11,7 @@ Run these after implementing to get immediate feedback:
 - Tests: `./mvnw test`
 - Typecheck: `./mvnw compile` (Java compiler catches type errors)
 - Lint: Built into compiler
+- Release check: `./scripts/check-forbidden-markers.sh` (scans for TODO/FIXME/etc)
 
 ## Operational Notes
 

@@ -1454,4 +1454,287 @@ public class ReportExportService {
         cell.setBorderColor(Color.LIGHT_GRAY);
         table.addCell(cell);
     }
+
+    // ==================== CASHFLOW EXPORTS ====================
+
+    /**
+     * Exports Cashflow Statement report to PDF format.
+     * Shows cash inflows, outflows, and net cash movement for bank accounts.
+     */
+    public byte[] exportCashflowToPdf(ReportingService.CashflowStatement report, Company company) {
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            Document document = new Document(PageSize.A4);
+            PdfWriter.getInstance(document, baos);
+            document.open();
+
+            // Title
+            addReportTitle(document, company, "Cashflow Statement");
+            addReportSubtitle(document, "Period: " + report.startDate().format(dateFormatter) +
+                " to " + report.endDate().format(dateFormatter));
+
+            // Reconciliation status
+            String reconcileStatus = report.isReconciled() ? "RECONCILED" : "UNRECONCILED";
+            Paragraph status = new Paragraph(reconcileStatus,
+                new Font(Font.HELVETICA, 10, Font.BOLD,
+                    report.isReconciled() ? PROFIT_COLOR : LOSS_COLOR));
+            status.setAlignment(Element.ALIGN_CENTER);
+            status.setSpacingAfter(15);
+            document.add(status);
+
+            // Summary section
+            addSectionHeader(document, "Cash Summary");
+
+            PdfPTable summaryTable = new PdfPTable(2);
+            summaryTable.setWidthPercentage(60);
+            summaryTable.setHorizontalAlignment(Element.ALIGN_LEFT);
+            summaryTable.setWidths(new float[]{3f, 2f});
+
+            addSummaryRow(summaryTable, "Opening Cash Balance", report.openingBalance());
+            addSummaryRow(summaryTable, "Total Cash Inflows", report.totalInflows());
+            addSummaryRow(summaryTable, "Total Cash Outflows", report.totalOutflows().negate());
+            addNetCashFlowRow(summaryTable, "Net Cash Flow", report.netCashFlow());
+            addSummaryRow(summaryTable, "Closing Cash Balance", report.closingBalance());
+
+            document.add(summaryTable);
+
+            // Account summaries section
+            if (!report.accountSummaries().isEmpty()) {
+                addSectionHeader(document, "Summary by Bank Account");
+
+                PdfPTable accountTable = new PdfPTable(5);
+                accountTable.setWidthPercentage(100);
+                accountTable.setWidths(new float[]{3f, 2f, 2f, 2f, 2f});
+
+                addTableHeader(accountTable, "Account");
+                addTableHeader(accountTable, "Opening");
+                addTableHeader(accountTable, "Inflows");
+                addTableHeader(accountTable, "Outflows");
+                addTableHeader(accountTable, "Closing");
+
+                boolean alternate = false;
+                for (ReportingService.CashflowAccountSummary summary : report.accountSummaries()) {
+                    Color bg = alternate ? ALT_ROW_BG : Color.WHITE;
+                    addTableCell(accountTable, summary.account().getCode() + " - " + summary.account().getName(),
+                        bg, Element.ALIGN_LEFT);
+                    addTableCell(accountTable, formatCurrency(summary.openingBalance()), bg, Element.ALIGN_RIGHT);
+                    addInflowCell(accountTable, summary.inflows(), bg);
+                    addOutflowCell(accountTable, summary.outflows(), bg);
+                    addTableCell(accountTable, formatCurrency(summary.closingBalance()), bg, Element.ALIGN_RIGHT);
+                    alternate = !alternate;
+                }
+
+                // Totals
+                addTotalCell(accountTable, "Totals");
+                addTotalCell(accountTable, formatCurrency(report.openingBalance()));
+                addTotalCell(accountTable, formatCurrency(report.totalInflows()));
+                addTotalCell(accountTable, formatCurrency(report.totalOutflows()));
+                addTotalCell(accountTable, formatCurrency(report.closingBalance()));
+
+                document.add(accountTable);
+            }
+
+            addReportFooter(document);
+            document.close();
+
+            log.info("Generated Cashflow PDF ({} bytes)", baos.size());
+            return baos.toByteArray();
+
+        } catch (Exception e) {
+            log.error("Failed to generate Cashflow PDF", e);
+            throw new RuntimeException("Failed to generate Cashflow PDF: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Exports Cashflow Statement report to Excel format.
+     */
+    public byte[] exportCashflowToExcel(ReportingService.CashflowStatement report, Company company) {
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+
+            Sheet sheet = workbook.createSheet("Cashflow Statement");
+            int rowNum = 0;
+
+            CellStyle headerStyle = createHeaderStyle(workbook);
+            CellStyle currencyStyle = createCurrencyStyle(workbook);
+            CellStyle titleStyle = createTitleStyle(workbook);
+            CellStyle totalStyle = createTotalStyle(workbook);
+            CellStyle sectionStyle = createSectionStyle(workbook);
+
+            // Title
+            org.apache.poi.ss.usermodel.Row titleRow = sheet.createRow(rowNum++);
+            org.apache.poi.ss.usermodel.Cell titleCell = titleRow.createCell(0);
+            titleCell.setCellValue(company.getName() + " - Cashflow Statement");
+            titleCell.setCellStyle(titleStyle);
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 4));
+
+            // Period
+            org.apache.poi.ss.usermodel.Row dateRow = sheet.createRow(rowNum++);
+            dateRow.createCell(0).setCellValue("Period: " + report.startDate().format(dateFormatter) +
+                " to " + report.endDate().format(dateFormatter));
+
+            // Status
+            org.apache.poi.ss.usermodel.Row statusRow = sheet.createRow(rowNum++);
+            statusRow.createCell(0).setCellValue(report.isReconciled() ? "RECONCILED" : "UNRECONCILED");
+
+            rowNum++; // Empty row
+
+            // Summary section
+            org.apache.poi.ss.usermodel.Row summaryHeader = sheet.createRow(rowNum++);
+            summaryHeader.createCell(0).setCellValue("Cash Summary");
+            summaryHeader.getCell(0).setCellStyle(sectionStyle);
+
+            rowNum++; // Empty row
+
+            // Summary data
+            addExcelSummaryRow(sheet, rowNum++, "Opening Cash Balance", report.openingBalance(), currencyStyle);
+            addExcelSummaryRow(sheet, rowNum++, "Total Cash Inflows", report.totalInflows(), currencyStyle);
+            addExcelSummaryRow(sheet, rowNum++, "Total Cash Outflows", report.totalOutflows().negate(), currencyStyle);
+            org.apache.poi.ss.usermodel.Row netRow = sheet.createRow(rowNum++);
+            netRow.createCell(0).setCellValue("Net Cash Flow");
+            netRow.getCell(0).setCellStyle(totalStyle);
+            org.apache.poi.ss.usermodel.Cell netCell = netRow.createCell(1);
+            netCell.setCellValue(report.netCashFlow().doubleValue());
+            netCell.setCellStyle(totalStyle);
+            addExcelSummaryRow(sheet, rowNum++, "Closing Cash Balance", report.closingBalance(), currencyStyle);
+
+            rowNum++; // Empty row
+
+            // Account summaries
+            if (!report.accountSummaries().isEmpty()) {
+                org.apache.poi.ss.usermodel.Row accountHeader = sheet.createRow(rowNum++);
+                accountHeader.createCell(0).setCellValue("Summary by Bank Account");
+                accountHeader.getCell(0).setCellStyle(sectionStyle);
+
+                // Column headers
+                org.apache.poi.ss.usermodel.Row colHeaders = sheet.createRow(rowNum++);
+                String[] headers = {"Account", "Opening", "Inflows", "Outflows", "Closing"};
+                for (int i = 0; i < headers.length; i++) {
+                    org.apache.poi.ss.usermodel.Cell cell = colHeaders.createCell(i);
+                    cell.setCellValue(headers[i]);
+                    cell.setCellStyle(headerStyle);
+                }
+
+                // Account data
+                for (ReportingService.CashflowAccountSummary summary : report.accountSummaries()) {
+                    org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowNum++);
+                    row.createCell(0).setCellValue(summary.account().getCode() + " - " + summary.account().getName());
+
+                    org.apache.poi.ss.usermodel.Cell openingCell = row.createCell(1);
+                    openingCell.setCellValue(summary.openingBalance().doubleValue());
+                    openingCell.setCellStyle(currencyStyle);
+
+                    org.apache.poi.ss.usermodel.Cell inflowsCell = row.createCell(2);
+                    inflowsCell.setCellValue(summary.inflows().doubleValue());
+                    inflowsCell.setCellStyle(currencyStyle);
+
+                    org.apache.poi.ss.usermodel.Cell outflowsCell = row.createCell(3);
+                    outflowsCell.setCellValue(summary.outflows().doubleValue());
+                    outflowsCell.setCellStyle(currencyStyle);
+
+                    org.apache.poi.ss.usermodel.Cell closingCell = row.createCell(4);
+                    closingCell.setCellValue(summary.closingBalance().doubleValue());
+                    closingCell.setCellStyle(currencyStyle);
+                }
+
+                // Totals row
+                org.apache.poi.ss.usermodel.Row totalsRow = sheet.createRow(rowNum);
+                org.apache.poi.ss.usermodel.Cell totalLabel = totalsRow.createCell(0);
+                totalLabel.setCellValue("Totals");
+                totalLabel.setCellStyle(totalStyle);
+
+                org.apache.poi.ss.usermodel.Cell totalOpening = totalsRow.createCell(1);
+                totalOpening.setCellValue(report.openingBalance().doubleValue());
+                totalOpening.setCellStyle(totalStyle);
+
+                org.apache.poi.ss.usermodel.Cell totalInflows = totalsRow.createCell(2);
+                totalInflows.setCellValue(report.totalInflows().doubleValue());
+                totalInflows.setCellStyle(totalStyle);
+
+                org.apache.poi.ss.usermodel.Cell totalOutflows = totalsRow.createCell(3);
+                totalOutflows.setCellValue(report.totalOutflows().doubleValue());
+                totalOutflows.setCellStyle(totalStyle);
+
+                org.apache.poi.ss.usermodel.Cell totalClosing = totalsRow.createCell(4);
+                totalClosing.setCellValue(report.closingBalance().doubleValue());
+                totalClosing.setCellStyle(totalStyle);
+            }
+
+            // Auto-size columns
+            for (int i = 0; i < 5; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            workbook.write(baos);
+            log.info("Generated Cashflow Excel ({} bytes)", baos.size());
+            return baos.toByteArray();
+
+        } catch (IOException e) {
+            log.error("Failed to generate Cashflow Excel", e);
+            throw new RuntimeException("Failed to generate Cashflow Excel: " + e.getMessage(), e);
+        }
+    }
+
+    // Cashflow PDF helper methods
+    private void addSummaryRow(PdfPTable table, String label, BigDecimal amount) {
+        PdfPCell labelCell = new PdfPCell(new Phrase(label, TABLE_CELL_FONT));
+        labelCell.setBorder(Rectangle.NO_BORDER);
+        labelCell.setPadding(6);
+        table.addCell(labelCell);
+
+        PdfPCell amountCell = new PdfPCell(new Phrase(formatCurrency(amount), TABLE_CELL_FONT));
+        amountCell.setBorder(Rectangle.NO_BORDER);
+        amountCell.setPadding(6);
+        amountCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        table.addCell(amountCell);
+    }
+
+    private void addNetCashFlowRow(PdfPTable table, String label, BigDecimal amount) {
+        Color textColor = amount.compareTo(BigDecimal.ZERO) >= 0 ? PROFIT_COLOR : LOSS_COLOR;
+
+        PdfPCell labelCell = new PdfPCell(new Phrase(label, TABLE_CELL_BOLD));
+        labelCell.setBorder(Rectangle.TOP | Rectangle.BOTTOM);
+        labelCell.setBorderWidth(1);
+        labelCell.setPadding(8);
+        labelCell.setBackgroundColor(TOTAL_BG);
+        table.addCell(labelCell);
+
+        PdfPCell amountCell = new PdfPCell(new Phrase(formatCurrency(amount),
+            new Font(Font.HELVETICA, 10, Font.BOLD, textColor)));
+        amountCell.setBorder(Rectangle.TOP | Rectangle.BOTTOM);
+        amountCell.setBorderWidth(1);
+        amountCell.setPadding(8);
+        amountCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        amountCell.setBackgroundColor(TOTAL_BG);
+        table.addCell(amountCell);
+    }
+
+    private void addInflowCell(PdfPTable table, BigDecimal amount, Color bgColor) {
+        PdfPCell cell = new PdfPCell(new Phrase(formatCurrency(amount),
+            new Font(Font.HELVETICA, 9, Font.NORMAL, PROFIT_COLOR)));
+        cell.setBackgroundColor(bgColor);
+        cell.setPadding(6);
+        cell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        cell.setBorderColor(Color.LIGHT_GRAY);
+        table.addCell(cell);
+    }
+
+    private void addOutflowCell(PdfPTable table, BigDecimal amount, Color bgColor) {
+        PdfPCell cell = new PdfPCell(new Phrase(formatCurrency(amount),
+            new Font(Font.HELVETICA, 9, Font.NORMAL, LOSS_COLOR)));
+        cell.setBackgroundColor(bgColor);
+        cell.setPadding(6);
+        cell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        cell.setBorderColor(Color.LIGHT_GRAY);
+        table.addCell(cell);
+    }
+
+    // Cashflow Excel helper methods
+    private void addExcelSummaryRow(Sheet sheet, int rowNum, String label, BigDecimal amount, CellStyle currencyStyle) {
+        org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowNum);
+        row.createCell(0).setCellValue(label);
+        org.apache.poi.ss.usermodel.Cell amountCell = row.createCell(1);
+        amountCell.setCellValue(amount.doubleValue());
+        amountCell.setCellStyle(currencyStyle);
+    }
 }

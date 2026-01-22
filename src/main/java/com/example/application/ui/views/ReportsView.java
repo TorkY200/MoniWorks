@@ -64,6 +64,7 @@ public class ReportsView extends VerticalLayout {
     private final VerticalLayout budgetVsActualContent = new VerticalLayout();
     private final VerticalLayout arAgingContent = new VerticalLayout();
     private final VerticalLayout apAgingContent = new VerticalLayout();
+    private final VerticalLayout cashflowContent = new VerticalLayout();
 
     // Department filter for P&L
     private ComboBox<Department> plDepartmentFilter;
@@ -79,6 +80,7 @@ public class ReportsView extends VerticalLayout {
     private HorizontalLayout bvaExportButtons;
     private HorizontalLayout arAgingExportButtons;
     private HorizontalLayout apAgingExportButtons;
+    private HorizontalLayout cashflowExportButtons;
 
     // Date pickers for aging reports
     private DatePicker arAgingAsOfDate;
@@ -91,6 +93,7 @@ public class ReportsView extends VerticalLayout {
     private BudgetVsActual currentBudgetVsActual;
     private ArAgingReport currentArAgingReport;
     private ApAgingReport currentApAgingReport;
+    private CashflowStatement currentCashflowStatement;
 
     private static final DecimalFormat MONEY_FORMAT = new DecimalFormat("#,##0.00");
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd MMM yyyy");
@@ -202,6 +205,11 @@ public class ReportsView extends VerticalLayout {
         Tab apAgingTab = new Tab(VaadinIcon.RECORDS.create(), new Span("AP Aging"));
         VerticalLayout apAgingLayout = createApAgingTab();
         tabSheet.add(apAgingTab, apAgingLayout);
+
+        // Cashflow Tab
+        Tab cashflowTab = new Tab(VaadinIcon.CASH.create(), new Span("Cashflow"));
+        VerticalLayout cashflowLayout = createCashflowTab();
+        tabSheet.add(cashflowTab, cashflowLayout);
 
         return tabSheet;
     }
@@ -1345,5 +1353,258 @@ public class ReportsView extends VerticalLayout {
 
         apAgingExportButtons.add(pdfLink, excelLink);
         apAgingExportButtons.setVisible(true);
+    }
+
+    // ==================== CASHFLOW TAB ====================
+
+    private VerticalLayout createCashflowTab() {
+        VerticalLayout layout = new VerticalLayout();
+        layout.setSizeFull();
+        layout.setPadding(false);
+
+        // Date pickers for cashflow report
+        DatePicker cashflowStartDate = new DatePicker("Start Date");
+        DatePicker cashflowEndDate = new DatePicker("End Date");
+        cashflowStartDate.setWidth("180px");
+        cashflowEndDate.setWidth("180px");
+
+        // Set defaults to current fiscal year or current month
+        LocalDate today = LocalDate.now();
+        cashflowStartDate.setValue(today.withDayOfMonth(1));
+        cashflowEndDate.setValue(today);
+
+        Button generateBtn = new Button("Generate Report", VaadinIcon.REFRESH.create());
+        generateBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        generateBtn.addClickListener(e -> loadCashflow(cashflowStartDate.getValue(), cashflowEndDate.getValue()));
+
+        // Export buttons container
+        cashflowExportButtons = new HorizontalLayout();
+        cashflowExportButtons.setSpacing(true);
+        cashflowExportButtons.setVisible(false);
+
+        HorizontalLayout controls = new HorizontalLayout(cashflowStartDate, cashflowEndDate,
+            generateBtn, cashflowExportButtons);
+        controls.setAlignItems(FlexComponent.Alignment.END);
+        controls.setSpacing(true);
+
+        // Content area
+        cashflowContent.setSizeFull();
+        cashflowContent.setPadding(false);
+
+        // Initial message
+        Span initialMessage = new Span("Select a date range and click Generate Report to view the Cashflow Statement");
+        initialMessage.getStyle().set("color", "var(--lumo-secondary-text-color)");
+        cashflowContent.add(initialMessage);
+
+        layout.add(controls, cashflowContent);
+        return layout;
+    }
+
+    private void loadCashflow(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null) {
+            Notification.show("Please select a date range", 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            return;
+        }
+
+        if (startDate.isAfter(endDate)) {
+            Notification.show("Start date must be before end date", 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            return;
+        }
+
+        try {
+            Company company = companyContextService.getCurrentCompany();
+            CashflowStatement report = reportingService.generateCashflow(company, startDate, endDate);
+            displayCashflow(report);
+        } catch (Exception e) {
+            Notification.show("Error generating report: " + e.getMessage(),
+                3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+        }
+    }
+
+    private void displayCashflow(CashflowStatement report) {
+        cashflowContent.removeAll();
+        currentCashflowStatement = report;
+        updateCashflowExportButtons();
+
+        // Report header
+        H3 header = new H3("Cashflow Statement");
+        Span subtitle = new Span("Period: " + report.startDate().format(DATE_FORMAT) +
+            " to " + report.endDate().format(DATE_FORMAT));
+        subtitle.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+        // Reconciliation status
+        Span status = new Span(report.isReconciled() ? "RECONCILED" : "UNRECONCILED");
+        status.getStyle()
+            .set("color", report.isReconciled() ? "var(--lumo-success-color)" : "var(--lumo-error-color)")
+            .set("font-weight", "bold")
+            .set("margin-left", "16px");
+
+        HorizontalLayout headerRow = new HorizontalLayout(header, status);
+        headerRow.setAlignItems(FlexComponent.Alignment.BASELINE);
+
+        // Cash Summary section
+        H3 summaryHeader = new H3("Cash Summary");
+        summaryHeader.getStyle().set("margin-top", "16px");
+
+        VerticalLayout summarySection = new VerticalLayout();
+        summarySection.setPadding(false);
+        summarySection.setSpacing(false);
+
+        addCashSummaryRow(summarySection, "Opening Cash Balance", report.openingBalance(), false);
+        addCashSummaryRow(summarySection, "Total Cash Inflows", report.totalInflows(), true);
+        addCashSummaryRow(summarySection, "Total Cash Outflows", report.totalOutflows().negate(), false);
+        addNetCashFlowRow(summarySection, "Net Cash Flow", report.netCashFlow());
+        addCashSummaryRow(summarySection, "Closing Cash Balance", report.closingBalance(), false);
+
+        // Bank Account Summaries
+        if (!report.accountSummaries().isEmpty()) {
+            H3 accountHeader = new H3("Summary by Bank Account");
+            accountHeader.getStyle().set("margin-top", "24px");
+
+            Grid<CashflowAccountSummary> accountGrid = new Grid<>();
+            accountGrid.setHeight("300px");
+            accountGrid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES, GridVariant.LUMO_COMPACT);
+
+            accountGrid.addColumn(summary -> summary.account().getCode() + " - " + summary.account().getName())
+                .setHeader("Account")
+                .setFlexGrow(2);
+
+            accountGrid.addColumn(summary -> formatMoney(summary.openingBalance()))
+                .setHeader("Opening")
+                .setAutoWidth(true)
+                .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+            accountGrid.addColumn(summary -> formatMoney(summary.inflows()))
+                .setHeader("Inflows")
+                .setAutoWidth(true)
+                .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+            accountGrid.addColumn(summary -> formatMoney(summary.outflows()))
+                .setHeader("Outflows")
+                .setAutoWidth(true)
+                .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+            accountGrid.addColumn(summary -> formatMoney(summary.closingBalance()))
+                .setHeader("Closing")
+                .setAutoWidth(true)
+                .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+            accountGrid.setItems(report.accountSummaries());
+
+            // Totals row
+            HorizontalLayout accountTotals = new HorizontalLayout();
+            accountTotals.setWidthFull();
+            accountTotals.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
+            accountTotals.getStyle()
+                .set("font-weight", "bold")
+                .set("padding", "8px")
+                .set("border-top", "2px solid var(--lumo-contrast-20pct)");
+
+            Span totalLabel = new Span("Totals:");
+            Span totalOpening = new Span(formatMoney(report.openingBalance()));
+            Span totalInflows = new Span(formatMoney(report.totalInflows()));
+            Span totalOutflows = new Span(formatMoney(report.totalOutflows()));
+            Span totalClosing = new Span(formatMoney(report.closingBalance()));
+
+            totalOpening.getStyle().set("width", "100px").set("text-align", "right");
+            totalInflows.getStyle().set("width", "100px").set("text-align", "right").set("color", "var(--lumo-success-color)");
+            totalOutflows.getStyle().set("width", "100px").set("text-align", "right").set("color", "var(--lumo-error-color)");
+            totalClosing.getStyle().set("width", "100px").set("text-align", "right");
+
+            accountTotals.add(totalLabel, totalOpening, totalInflows, totalOutflows, totalClosing);
+
+            cashflowContent.add(headerRow, subtitle, summaryHeader, summarySection,
+                accountHeader, accountGrid, accountTotals);
+        } else {
+            Span noData = new Span("No bank account activity found for this period.");
+            noData.getStyle().set("color", "var(--lumo-secondary-text-color)");
+            cashflowContent.add(headerRow, subtitle, summaryHeader, summarySection, noData);
+        }
+    }
+
+    private void addCashSummaryRow(VerticalLayout container, String label, BigDecimal amount, boolean isInflow) {
+        HorizontalLayout row = new HorizontalLayout();
+        row.setWidthFull();
+        row.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        row.getStyle().set("padding", "4px 8px");
+
+        Span labelSpan = new Span(label);
+        Span amountSpan = new Span(formatMoney(amount));
+
+        if (isInflow && amount.compareTo(BigDecimal.ZERO) > 0) {
+            amountSpan.getStyle().set("color", "var(--lumo-success-color)");
+        } else if (!isInflow && amount.compareTo(BigDecimal.ZERO) < 0) {
+            amountSpan.getStyle().set("color", "var(--lumo-error-color)");
+        }
+
+        row.add(labelSpan, amountSpan);
+        container.add(row);
+    }
+
+    private void addNetCashFlowRow(VerticalLayout container, String label, BigDecimal amount) {
+        HorizontalLayout row = new HorizontalLayout();
+        row.setWidthFull();
+        row.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        row.getStyle()
+            .set("padding", "8px")
+            .set("font-weight", "bold")
+            .set("background-color", "var(--lumo-contrast-5pct)")
+            .set("border-top", "1px solid var(--lumo-contrast-20pct)")
+            .set("border-bottom", "1px solid var(--lumo-contrast-20pct)");
+
+        Span labelSpan = new Span(label);
+        Span amountSpan = new Span(formatMoney(amount));
+
+        if (amount.compareTo(BigDecimal.ZERO) >= 0) {
+            amountSpan.getStyle().set("color", "var(--lumo-success-color)");
+        } else {
+            amountSpan.getStyle().set("color", "var(--lumo-error-color)");
+        }
+
+        row.add(labelSpan, amountSpan);
+        container.add(row);
+    }
+
+    private void updateCashflowExportButtons() {
+        cashflowExportButtons.removeAll();
+        if (currentCashflowStatement == null) {
+            cashflowExportButtons.setVisible(false);
+            return;
+        }
+
+        Company company = companyContextService.getCurrentCompany();
+        String dateStr = currentCashflowStatement.endDate().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+
+        // PDF Export
+        StreamResource pdfResource = new StreamResource(
+            "Cashflow_" + dateStr + ".pdf",
+            () -> new ByteArrayInputStream(
+                reportExportService.exportCashflowToPdf(currentCashflowStatement, company)
+            )
+        );
+        Anchor pdfLink = new Anchor(pdfResource, "");
+        pdfLink.getElement().setAttribute("download", true);
+        Button pdfBtn = new Button("PDF", VaadinIcon.FILE_TEXT.create());
+        pdfBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+        pdfLink.add(pdfBtn);
+
+        // Excel Export
+        StreamResource excelResource = new StreamResource(
+            "Cashflow_" + dateStr + ".xlsx",
+            () -> new ByteArrayInputStream(
+                reportExportService.exportCashflowToExcel(currentCashflowStatement, company)
+            )
+        );
+        Anchor excelLink = new Anchor(excelResource, "");
+        excelLink.getElement().setAttribute("download", true);
+        Button excelBtn = new Button("Excel", VaadinIcon.FILE_TABLE.create());
+        excelBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+        excelLink.add(excelBtn);
+
+        cashflowExportButtons.add(pdfLink, excelLink);
+        cashflowExportButtons.setVisible(true);
     }
 }
