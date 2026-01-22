@@ -16,6 +16,7 @@
 - **Phase 12 Invoice & Statement PDFs COMPLETE** - Tag: 0.2.0
 - **Phase 12b AR/AP Aging Reports UI COMPLETE** - Tag: 0.2.1
 - **Phase 13a Receipt Allocation UI COMPLETE** - Tag: 0.2.2
+- **Phase 13b Payment Allocation UI COMPLETE** - Tag: 0.2.3
 - All 70 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, ApplicationTest: 1)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView
 - Database configured: H2 for development, PostgreSQL for production
@@ -336,6 +337,24 @@ Per specs, Release 1 must deliver:
   - Added allocations section to SalesInvoicesView invoice detail
   - Shows grid of allocated receipts with date, reference, amount, allocation date
   - Only displays for issued invoices with payments (amountPaid > 0)
+
+### Phase 13b: Payment Allocation UI (COMPLETE) - Tag: 0.2.3
+- [x] Payment allocation UI in TransactionsView (spec 10)
+  - Added "Allocate" button for posted PAYMENT transactions in TransactionsView
+  - Created comprehensive allocation dialog showing:
+    - Payment info header (amount, allocated, unallocated)
+    - Existing allocations grid with remove capability
+    - Outstanding bills grid with allocation amount fields
+    - Auto-allocate button using suggestions (oldest first / exact match)
+    - Real-time summary of total being allocated vs remaining
+  - PayableAllocationService integration for:
+    - suggestAllocations() - auto-suggestion based on amount matching
+    - getUnallocatedAmount() - track remaining payment balance
+    - allocate() / removeAllocation() - create/remove allocations
+- [x] Show payment allocations on bill detail (spec 10)
+  - Added allocations section to SupplierBillsView bill detail
+  - Shows grid of allocated payments with date, reference, amount, allocation date
+  - Only displays for posted bills with payments (amountPaid > 0)
 
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead

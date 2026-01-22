@@ -53,6 +53,7 @@ public class SupplierBillsView extends VerticalLayout {
     private final ProductService productService;
     private final TaxCodeService taxCodeService;
     private final CompanyContextService companyContextService;
+    private final PayableAllocationService payableAllocationService;
 
     private final Grid<SupplierBill> grid = new Grid<>();
     private final TextField searchField = new TextField();
@@ -68,13 +69,15 @@ public class SupplierBillsView extends VerticalLayout {
                              AccountService accountService,
                              ProductService productService,
                              TaxCodeService taxCodeService,
-                             CompanyContextService companyContextService) {
+                             CompanyContextService companyContextService,
+                             PayableAllocationService payableAllocationService) {
         this.billService = billService;
         this.contactService = contactService;
         this.accountService = accountService;
         this.productService = productService;
         this.taxCodeService = taxCodeService;
         this.companyContextService = companyContextService;
+        this.payableAllocationService = payableAllocationService;
 
         addClassName("bills-view");
         setSizeFull();
@@ -387,6 +390,39 @@ public class SupplierBillsView extends VerticalLayout {
         addReadOnlyField(totalsForm, "Balance", "$" + bill.getBalance().toPlainString());
 
         detailLayout.add(new H3("Totals"), totalsForm);
+
+        // Allocations section (for posted bills with payments)
+        if (bill.isPosted() && bill.getAmountPaid().compareTo(BigDecimal.ZERO) > 0) {
+            List<PayableAllocation> allocations = payableAllocationService.findByBill(bill);
+            if (!allocations.isEmpty()) {
+                H3 allocationsHeader = new H3("Payment Allocations");
+                detailLayout.add(allocationsHeader);
+
+                Grid<PayableAllocation> allocGrid = new Grid<>();
+                allocGrid.setHeight("120px");
+                allocGrid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES, GridVariant.LUMO_COMPACT);
+
+                allocGrid.addColumn(a -> a.getPaymentTransaction().getTransactionDate().format(DATE_FORMATTER))
+                    .setHeader("Date")
+                    .setAutoWidth(true);
+
+                allocGrid.addColumn(a -> a.getPaymentTransaction().getReference() != null ?
+                    a.getPaymentTransaction().getReference() : a.getPaymentTransaction().getDescription())
+                    .setHeader("Payment")
+                    .setFlexGrow(1);
+
+                allocGrid.addColumn(a -> "$" + a.getAmount().setScale(2).toPlainString())
+                    .setHeader("Amount")
+                    .setAutoWidth(true);
+
+                allocGrid.addColumn(a -> a.getAllocatedAt().toString().substring(0, 10))
+                    .setHeader("Allocated")
+                    .setAutoWidth(true);
+
+                allocGrid.setItems(allocations);
+                detailLayout.add(allocGrid);
+            }
+        }
 
         // Notes
         if (bill.getNotes() != null && !bill.getNotes().isBlank()) {
