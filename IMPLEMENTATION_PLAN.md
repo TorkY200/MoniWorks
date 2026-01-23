@@ -30,7 +30,8 @@
 - **Phase 22 Contact CSV Import COMPLETE** - Tag: 0.3.4
 - **Phase 23 Budget CSV Import COMPLETE** - Tag: 0.3.5
 - **Phase 24 Login Event Tracking COMPLETE** - Tag: 0.3.6
-- All 136 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, InvitationServiceTest: 18, SalesInvoiceServiceTest: 11, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ApplicationTest: 1)
+- **Phase 25 Product CSV Import COMPLETE** - Tag: 0.3.7
+- All 150 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, InvitationServiceTest: 18, SalesInvoiceServiceTest: 11, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ApplicationTest: 1)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation
 - Database configured: H2 for development, PostgreSQL for production
 - Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql, V14__statement_runs.sql, V15__additional_permissions.sql, V16__user_security_level.sql, V17__user_invitations.sql, V18__credit_notes.sql
@@ -722,6 +723,40 @@ Per specs, Release 1 must deliver:
   - Logout with String principal
   - Null authentication does not log
   - User not found does not log
+
+### Phase 25: Product CSV Import (COMPLETE) - Tag: 0.3.7
+- [x] ProductImportService for CSV parsing (follows Contact/Budget import pattern)
+  - Flexible column mapping with case-insensitive header matching
+  - Required columns: code (max 31 chars), name
+  - Optional columns: description, category, buyPrice, sellPrice, taxCode, barcode, stickyNote, salesAccountCode, purchaseAccountCode
+  - Handles quoted fields with embedded commas
+  - Price parsing with currency symbol ($) and comma removal
+  - Account linking by code for salesAccount and purchaseAccount
+- [x] Import and update modes
+  - Import only mode skips existing products by code
+  - Update mode updates existing products with new values
+  - Preview mode to see changes before committing
+- [x] Import UI in ProductsView
+  - "Import CSV" button in toolbar
+  - Import dialog with instructions and sample CSV download
+  - File upload with CSV format validation
+  - Preview of import results before committing
+  - "Update existing products" checkbox option
+  - Error and warning display
+- [x] ProductImportServiceTest with 14 unit tests covering:
+  - Valid CSV import
+  - Missing required columns (code, name)
+  - Empty file handling
+  - Code length validation
+  - Skip existing products mode
+  - Update existing products mode
+  - All fields parsing
+  - Price with currency symbols and commas
+  - Quoted fields with commas
+  - Flexible column name formats
+  - Account code linking
+  - Preview mode without saving
+  - Sample CSV content generation
 
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead

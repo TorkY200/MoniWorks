@@ -7,6 +7,7 @@ import com.example.application.domain.SavedView.EntityType;
 import com.example.application.domain.User;
 import com.example.application.service.AccountService;
 import com.example.application.service.CompanyContextService;
+import com.example.application.service.ProductImportService;
 import com.example.application.service.ProductService;
 import com.example.application.service.SavedViewService;
 import com.example.application.service.TaxCodeService;
@@ -20,6 +21,7 @@ import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
+import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Span;
@@ -33,11 +35,17 @@ import com.vaadin.flow.component.splitlayout.SplitLayout;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.component.upload.Upload;
+import com.vaadin.flow.component.upload.receivers.MemoryBuffer;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.StreamResource;
 import jakarta.annotation.security.PermitAll;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.util.List;
 import java.util.Locale;
@@ -58,6 +66,7 @@ public class ProductsView extends VerticalLayout {
     private final TaxCodeService taxCodeService;
     private final CompanyContextService companyContextService;
     private final SavedViewService savedViewService;
+    private final ProductImportService productImportService;
 
     private final Grid<Product> grid = new Grid<>();
     private final TextField searchField = new TextField();
@@ -73,12 +82,14 @@ public class ProductsView extends VerticalLayout {
                         AccountService accountService,
                         TaxCodeService taxCodeService,
                         CompanyContextService companyContextService,
-                        SavedViewService savedViewService) {
+                        SavedViewService savedViewService,
+                        ProductImportService productImportService) {
         this.productService = productService;
         this.accountService = accountService;
         this.taxCodeService = taxCodeService;
         this.companyContextService = companyContextService;
         this.savedViewService = savedViewService;
+        this.productImportService = productImportService;
 
         addClassName("products-view");
         setSizeFull();
@@ -197,6 +208,10 @@ public class ProductsView extends VerticalLayout {
         addButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         addButton.addClickListener(e -> openProductDialog(null));
 
+        Button importButton = new Button("Import CSV", VaadinIcon.UPLOAD.create());
+        importButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        importButton.addClickListener(e -> openImportDialog());
+
         Button refreshButton = new Button(VaadinIcon.REFRESH.create());
         refreshButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
         refreshButton.addClickListener(e -> {
@@ -209,7 +224,7 @@ public class ProductsView extends VerticalLayout {
         if (gridCustomizer != null) {
             filters.add(gridCustomizer);
         }
-        filters.add(addButton, refreshButton);
+        filters.add(addButton, importButton, refreshButton);
         filters.setAlignItems(FlexComponent.Alignment.BASELINE);
 
         HorizontalLayout toolbar = new HorizontalLayout(title, filters);
@@ -529,5 +544,157 @@ public class ProductsView extends VerticalLayout {
 
     private String emptyToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private void openImportDialog() {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Import Products from CSV");
+        dialog.setWidth("600px");
+
+        VerticalLayout layout = new VerticalLayout();
+        layout.setPadding(false);
+        layout.setSpacing(true);
+
+        // Instructions
+        Span instructions = new Span("Upload a CSV file with product data. Required columns: code, name. " +
+            "Optional columns: description, category, buyPrice, sellPrice, taxCode, barcode, " +
+            "salesAccountCode, purchaseAccountCode, stickyNote.");
+        instructions.getStyle()
+            .set("color", "var(--lumo-secondary-text-color)")
+            .set("font-size", "var(--lumo-font-size-s)");
+
+        // Download sample CSV link
+        String sampleCsv = productImportService.getSampleCsvContent();
+        StreamResource sampleResource = new StreamResource("products_sample.csv",
+            () -> new ByteArrayInputStream(sampleCsv.getBytes(StandardCharsets.UTF_8)));
+        sampleResource.setContentType("text/csv");
+        Anchor downloadSample = new Anchor(sampleResource, "Download sample CSV");
+        downloadSample.getElement().setAttribute("download", true);
+        downloadSample.getStyle().set("font-size", "var(--lumo-font-size-s)");
+
+        // Update existing checkbox
+        Checkbox updateExisting = new Checkbox("Update existing products (match by code)");
+        updateExisting.setValue(false);
+        updateExisting.setHelperText("If unchecked, products with existing codes will be skipped");
+
+        // File upload
+        MemoryBuffer buffer = new MemoryBuffer();
+        Upload upload = new Upload(buffer);
+        upload.setAcceptedFileTypes(".csv", "text/csv");
+        upload.setMaxFiles(1);
+        upload.setDropLabel(new Span("Drop CSV file here or click to upload"));
+        upload.setWidthFull();
+
+        // Preview/result area
+        VerticalLayout resultArea = new VerticalLayout();
+        resultArea.setPadding(false);
+        resultArea.setVisible(false);
+
+        // Import button
+        Button importButton = new Button("Import");
+        importButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        importButton.setEnabled(false);
+
+        // Store the uploaded bytes for import
+        final byte[][] uploadedBytes = {null};
+
+        upload.addSucceededListener(event -> {
+            try {
+                // Read the stream into bytes for multiple uses
+                uploadedBytes[0] = buffer.getInputStream().readAllBytes();
+
+                // Preview the import
+                Company company = companyContextService.getCurrentCompany();
+                ProductImportService.ImportResult preview = productImportService.previewImport(
+                    new ByteArrayInputStream(uploadedBytes[0]),
+                    company,
+                    updateExisting.getValue()
+                );
+
+                resultArea.removeAll();
+                if (preview.success()) {
+                    Span previewText = new Span(String.format(
+                        "Preview: %d products to import, %d to update, %d to skip",
+                        preview.imported(), preview.updated(), preview.skipped()));
+                    previewText.getStyle().set("color", "var(--lumo-success-text-color)");
+                    resultArea.add(previewText);
+
+                    if (!preview.warnings().isEmpty()) {
+                        for (String warning : preview.warnings()) {
+                            Span warningSpan = new Span(warning);
+                            warningSpan.getStyle().set("color", "var(--lumo-warning-text-color)")
+                                .set("font-size", "var(--lumo-font-size-s)");
+                            resultArea.add(warningSpan);
+                        }
+                    }
+
+                    importButton.setEnabled(preview.imported() > 0 || preview.updated() > 0);
+                } else {
+                    for (String error : preview.errors()) {
+                        Span errorSpan = new Span(error);
+                        errorSpan.getStyle().set("color", "var(--lumo-error-text-color)");
+                        resultArea.add(errorSpan);
+                    }
+                    importButton.setEnabled(false);
+                }
+                resultArea.setVisible(true);
+            } catch (IOException e) {
+                Notification.show("Error reading file: " + e.getMessage(), 3000, Notification.Position.MIDDLE)
+                    .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            }
+        });
+
+        upload.addFileRejectedListener(event -> {
+            Notification.show("Invalid file: " + event.getErrorMessage(), 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+        });
+
+        importButton.addClickListener(e -> {
+            if (uploadedBytes[0] == null) {
+                Notification.show("Please upload a file first", 3000, Notification.Position.MIDDLE)
+                    .addThemeVariants(NotificationVariant.LUMO_ERROR);
+                return;
+            }
+
+            try {
+                Company company = companyContextService.getCurrentCompany();
+                User user = companyContextService.getCurrentUser();
+                ProductImportService.ImportResult result = productImportService.importProducts(
+                    new ByteArrayInputStream(uploadedBytes[0]),
+                    company,
+                    user,
+                    updateExisting.getValue()
+                );
+
+                if (result.success()) {
+                    Notification.show(String.format(
+                        "Import complete: %d imported, %d updated, %d skipped",
+                        result.imported(), result.updated(), result.skipped()),
+                        5000, Notification.Position.BOTTOM_START)
+                        .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+                    dialog.close();
+                    loadProducts();
+                    loadCategories();
+                } else {
+                    resultArea.removeAll();
+                    for (String error : result.errors()) {
+                        Span errorSpan = new Span(error);
+                        errorSpan.getStyle().set("color", "var(--lumo-error-text-color)");
+                        resultArea.add(errorSpan);
+                    }
+                }
+            } catch (IOException ex) {
+                Notification.show("Import failed: " + ex.getMessage(), 3000, Notification.Position.MIDDLE)
+                    .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            }
+        });
+
+        Button cancelButton = new Button("Cancel", e -> dialog.close());
+
+        layout.add(instructions, downloadSample, updateExisting, upload, resultArea);
+
+        dialog.add(layout);
+        dialog.getFooter().add(cancelButton, importButton);
+        dialog.open();
     }
 }
