@@ -48,7 +48,8 @@
 - **Phase 40 Transfer Transactions & Reconciliation Audit Trail COMPLETE** - Tag: 0.5.2
 - **Phase 41 Complete Bank Reconciliation Integration COMPLETE** - Tag: 0.5.3
 - **Phase 42 Credit Note Voiding COMPLETE** - Tag: 0.5.4
-- All 156 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4)
+- **Phase 43 Overpayment Support COMPLETE** - Tag: 0.5.5
+- All 184 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 14, PayableAllocationServiceTest: 14)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
 - Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql, V14__statement_runs.sql, V15__additional_permissions.sql, V16__user_security_level.sql, V17__user_invitations.sql, V18__credit_notes.sql, V19__reconciliation_match.sql, V20__ledger_entry_reconciliation.sql
@@ -1173,6 +1174,23 @@ Per specs, Release 1 must deliver:
   - voidCreditNote_DraftCreditNote_ThrowsException
   - voidCreditNote_NoPostedTransaction_StillVoids
 - [x] All 156 tests passing (SalesInvoiceServiceTest: 15)
+- [x] No forbidden markers
+
+### Phase 43: Overpayment Support (COMPLETE) - Tag: 0.5.5
+- [x] Overpayment support for receipt allocations (spec 09)
+  - Removed validation that blocked allocation exceeding invoice balance
+  - Overpayments create negative invoice balance (customer credit)
+  - Customer credit can be applied to future invoices
+  - Updated ReceivableAllocationService documentation
+- [x] Overpayment support for payment allocations (spec 10)
+  - Removed validation that blocked allocation exceeding bill balance
+  - Overpayments create negative bill balance (supplier credit/advance)
+  - Supplier credit can be applied against future bills
+  - Updated PayableAllocationService documentation
+- [x] Unit tests for allocation services (28 new tests)
+  - ReceivableAllocationServiceTest: 14 tests covering normal, overpayment, and error cases
+  - PayableAllocationServiceTest: 14 tests covering normal, overpayment, and error cases
+- [x] All 184 tests passing
 - [x] No forbidden markers
 
 ## Lessons Learned

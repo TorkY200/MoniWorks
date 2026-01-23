@@ -16,8 +16,12 @@ import com.example.application.repository.SalesInvoiceRepository;
  * Service for managing receivable allocations (matching receipts to invoices).
  *
  * <p>Supports: - Allocating a receipt to one or multiple invoices - Partial payments (allocate less
- * than invoice balance) - Auto-allocation suggestions based on amount matching - Tracking
- * unallocated receipt amounts
+ * than invoice balance) - Overpayments (allocate more than invoice balance, creates customer
+ * credit) - Auto-allocation suggestions based on amount matching - Tracking unallocated receipt
+ * amounts
+ *
+ * <p>Overpayments result in a negative invoice balance which represents a credit available for the
+ * customer. This credit can be applied to future invoices.
  */
 @Service
 @Transactional
@@ -240,12 +244,8 @@ public class ReceivableAllocationService {
       throw new IllegalStateException("Receipt and invoice must be for the same company");
     }
 
-    // Check allocation doesn't exceed invoice balance
-    BigDecimal balance = invoice.getBalance();
-    if (amount.compareTo(balance) > 0) {
-      throw new IllegalArgumentException(
-          "Allocation amount ($" + amount + ") exceeds invoice balance ($" + balance + ")");
-    }
+    // Overpayments are allowed per spec 09 - allocation can exceed invoice balance
+    // This creates a customer credit (negative balance on the invoice)
 
     // Check receipt has enough unallocated funds
     BigDecimal unallocated = getUnallocatedAmount(receipt);

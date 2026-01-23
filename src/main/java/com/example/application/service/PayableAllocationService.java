@@ -16,8 +16,11 @@ import com.example.application.repository.SupplierBillRepository;
  * Service for managing payable allocations (matching payments to supplier bills).
  *
  * <p>Supports: - Allocating a payment to one or multiple bills - Partial payments (allocate less
- * than bill balance) - Auto-allocation suggestions based on amount matching - Tracking unallocated
- * payment amounts
+ * than bill balance) - Overpayments (allocate more than bill balance, creates supplier credit) -
+ * Auto-allocation suggestions based on amount matching - Tracking unallocated payment amounts
+ *
+ * <p>Overpayments result in a negative bill balance which represents a credit available from the
+ * supplier. This credit can be applied against future bills.
  */
 @Service
 @Transactional
@@ -239,12 +242,8 @@ public class PayableAllocationService {
       throw new IllegalStateException("Payment and bill must be for the same company");
     }
 
-    // Check allocation doesn't exceed bill balance
-    BigDecimal balance = bill.getBalance();
-    if (amount.compareTo(balance) > 0) {
-      throw new IllegalArgumentException(
-          "Allocation amount ($" + amount + ") exceeds bill balance ($" + balance + ")");
-    }
+    // Overpayments are allowed per spec 10 - allocation can exceed bill balance
+    // This creates a supplier credit (negative balance on the bill)
 
     // Check payment has enough unallocated funds
     BigDecimal unallocated = getUnallocatedAmount(payment);
