@@ -586,6 +586,59 @@ public class SalesInvoiceService {
     return creditNote;
   }
 
+  /**
+   * Voids an issued credit note by creating a reversal transaction. Sets the credit note status to
+   * VOID and adjusts the original invoice's amountPaid.
+   *
+   * @param creditNote The credit note to void
+   * @param actor The user performing the action
+   * @param reason Optional reason for voiding
+   * @return The voided credit note
+   */
+  public SalesInvoice voidCreditNote(SalesInvoice creditNote, User actor, String reason) {
+    if (!creditNote.isCreditNote()) {
+      throw new IllegalStateException("This is not a credit note");
+    }
+
+    if (!creditNote.isIssued()) {
+      throw new IllegalStateException("Can only void issued credit notes");
+    }
+
+    // Create reversal of the posted transaction
+    Transaction postedTransaction = creditNote.getPostedTransaction();
+    if (postedTransaction != null) {
+      postingService.reverseTransaction(postedTransaction, actor, reason);
+    }
+
+    // Update the original invoice's amountPaid (remove the credit)
+    SalesInvoice originalInvoice = creditNote.getOriginalInvoice();
+    if (originalInvoice != null) {
+      BigDecimal newAmountPaid = originalInvoice.getAmountPaid().subtract(creditNote.getTotal());
+      // Ensure we don't go negative (shouldn't happen but defensive)
+      if (newAmountPaid.compareTo(BigDecimal.ZERO) < 0) {
+        newAmountPaid = BigDecimal.ZERO;
+      }
+      originalInvoice.setAmountPaid(newAmountPaid);
+      invoiceRepository.save(originalInvoice);
+    }
+
+    // Update credit note status
+    creditNote.setStatus(InvoiceStatus.VOID);
+    creditNote = invoiceRepository.save(creditNote);
+
+    auditService.logEvent(
+        creditNote.getCompany(),
+        actor,
+        "CREDIT_NOTE_VOIDED",
+        "SalesInvoice",
+        creditNote.getId(),
+        "Voided credit note "
+            + creditNote.getInvoiceNumber()
+            + (reason != null ? ": " + reason : ""));
+
+    return creditNote;
+  }
+
   /** Finds all credit notes for a specific invoice. */
   @Transactional(readOnly = true)
   public List<SalesInvoice> findCreditNotesForInvoice(SalesInvoice originalInvoice) {

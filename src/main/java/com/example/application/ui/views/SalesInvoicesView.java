@@ -379,11 +379,19 @@ public class SalesInvoicesView extends VerticalLayout implements BeforeEnterObse
       creditNoteButton.addClickListener(e -> openCreateCreditNoteDialog(invoice));
       actions.add(creditNoteButton);
 
-      // Void button
+      // Void button for regular invoices
       Button voidButton = new Button("Void", VaadinIcon.BAN.create());
       voidButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_ERROR);
       voidButton.addClickListener(e -> confirmVoidInvoice(invoice));
       actions.add(voidButton);
+    }
+
+    // Void button for issued credit notes
+    if (invoice.isIssued() && invoice.isCreditNote()) {
+      Button voidCreditNoteButton = new Button("Void", VaadinIcon.BAN.create());
+      voidCreditNoteButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_ERROR);
+      voidCreditNoteButton.addClickListener(e -> confirmVoidCreditNote(invoice));
+      actions.add(voidCreditNoteButton);
     }
 
     // PDF export and email buttons for issued invoices
@@ -1013,8 +1021,10 @@ public class SalesInvoicesView extends VerticalLayout implements BeforeEnterObse
         e -> {
           try {
             String reason = reasonField.getValue();
+            User currentUser = companyContextService.getCurrentUser();
             SalesInvoice voided =
-                invoiceService.voidInvoice(invoice, null, reason.isBlank() ? null : reason);
+                invoiceService.voidInvoice(
+                    invoice, currentUser, reason.isBlank() ? null : reason);
 
             Notification.show("Invoice voided", 3000, Notification.Position.BOTTOM_START)
                 .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
@@ -1025,6 +1035,50 @@ public class SalesInvoicesView extends VerticalLayout implements BeforeEnterObse
           } catch (Exception ex) {
             Notification.show(
                     "Error voiding invoice: " + ex.getMessage(), 5000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+          }
+        });
+
+    confirm.open();
+  }
+
+  private void confirmVoidCreditNote(SalesInvoice creditNote) {
+    ConfirmDialog confirm = new ConfirmDialog();
+    confirm.setHeader("Void Credit Note?");
+    confirm.setText(
+        "Void credit note #"
+            + creditNote.getInvoiceNumber()
+            + "? "
+            + "This will reverse the ledger entries and restore the original invoice balance. "
+            + "This action cannot be undone.");
+    confirm.setCancelable(true);
+    confirm.setConfirmText("Void Credit Note");
+    confirm.setConfirmButtonTheme("primary error");
+
+    TextField reasonField = new TextField("Reason (optional)");
+    reasonField.setWidthFull();
+    confirm.add(reasonField);
+
+    confirm.addConfirmListener(
+        e -> {
+          try {
+            String reason = reasonField.getValue();
+            User currentUser = companyContextService.getCurrentUser();
+            SalesInvoice voided =
+                invoiceService.voidCreditNote(
+                    creditNote, currentUser, reason.isBlank() ? null : reason);
+
+            Notification.show("Credit note voided", 3000, Notification.Position.BOTTOM_START)
+                .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+
+            loadInvoices();
+            showInvoiceDetail(voided);
+
+          } catch (Exception ex) {
+            Notification.show(
+                    "Error voiding credit note: " + ex.getMessage(),
+                    5000,
+                    Notification.Position.MIDDLE)
                 .addThemeVariants(NotificationVariant.LUMO_ERROR);
           }
         });

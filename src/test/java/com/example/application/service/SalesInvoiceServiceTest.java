@@ -387,4 +387,111 @@ class SalesInvoiceServiceTest {
     assertEquals("CN-INV-0001", creditNotes.get(0).getInvoiceNumber());
     assertEquals("CN-INV-0001-2", creditNotes.get(1).getInvoiceNumber());
   }
+
+  @Test
+  void voidCreditNote_IssuedCreditNote_VoidsSuccessfully() {
+    // Given - an issued credit note
+    SalesInvoice creditNote = new SalesInvoice();
+    creditNote.setId(2L);
+    creditNote.setCompany(company);
+    creditNote.setInvoiceNumber("CN-INV-0001");
+    creditNote.setContact(customer);
+    creditNote.setIssueDate(LocalDate.now());
+    creditNote.setDueDate(LocalDate.now());
+    creditNote.setStatus(InvoiceStatus.ISSUED);
+    creditNote.setType(InvoiceType.CREDIT_NOTE);
+    creditNote.setOriginalInvoice(issuedInvoice);
+
+    // Set up the credit note total - tax-inclusive pricing:
+    // qty=1, price=100, taxRate=10%
+    // Gross = 100, Net = 100/1.10 = 90.91, Tax = 9.09, Total = 100
+    SalesInvoiceLine creditLine =
+        new SalesInvoiceLine(incomeAccount, BigDecimal.ONE, BigDecimal.valueOf(100));
+    creditLine.setTaxCode("GST");
+    creditLine.setTaxRate(BigDecimal.valueOf(10));
+    creditLine.calculateTotals();
+    creditNote.addLine(creditLine);
+    creditNote.recalculateTotals(); // Total = 100.00 (tax-inclusive)
+
+    // Original invoice has the credit applied (100.00)
+    issuedInvoice.setAmountPaid(BigDecimal.valueOf(100));
+
+    Transaction postedTransaction = new Transaction();
+    postedTransaction.setId(1L);
+    creditNote.setPostedTransaction(postedTransaction);
+
+    when(invoiceRepository.save(any(SalesInvoice.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    // When
+    SalesInvoice voided = invoiceService.voidCreditNote(creditNote, user, "Customer dispute");
+
+    // Then
+    assertEquals(InvoiceStatus.VOID, voided.getStatus());
+    verify(postingService).reverseTransaction(postedTransaction, user, "Customer dispute");
+    // Original invoice's amountPaid should be reduced from 100 to 0
+    assertEquals(0, issuedInvoice.getAmountPaid().compareTo(BigDecimal.ZERO));
+    verify(invoiceRepository, times(2)).save(any(SalesInvoice.class)); // Credit note + original
+    verify(auditService)
+        .logEvent(
+            eq(company),
+            eq(user),
+            eq("CREDIT_NOTE_VOIDED"),
+            eq("SalesInvoice"),
+            eq(2L),
+            contains("Voided credit note"));
+  }
+
+  @Test
+  void voidCreditNote_NotCreditNote_ThrowsException() {
+    // Given - regular invoice, not a credit note
+    issuedInvoice.setStatus(InvoiceStatus.ISSUED);
+
+    // When & Then
+    IllegalStateException exception =
+        assertThrows(
+            IllegalStateException.class,
+            () -> invoiceService.voidCreditNote(issuedInvoice, user, "Test"));
+    assertEquals("This is not a credit note", exception.getMessage());
+  }
+
+  @Test
+  void voidCreditNote_DraftCreditNote_ThrowsException() {
+    // Given - draft credit note
+    SalesInvoice creditNote = new SalesInvoice();
+    creditNote.setId(2L);
+    creditNote.setType(InvoiceType.CREDIT_NOTE);
+    creditNote.setStatus(InvoiceStatus.DRAFT);
+
+    // When & Then
+    IllegalStateException exception =
+        assertThrows(
+            IllegalStateException.class,
+            () -> invoiceService.voidCreditNote(creditNote, user, "Test"));
+    assertEquals("Can only void issued credit notes", exception.getMessage());
+  }
+
+  @Test
+  void voidCreditNote_NoPostedTransaction_StillVoids() {
+    // Given - issued credit note without posted transaction (edge case)
+    SalesInvoice creditNote = new SalesInvoice();
+    creditNote.setId(2L);
+    creditNote.setCompany(company);
+    creditNote.setInvoiceNumber("CN-INV-0001");
+    creditNote.setStatus(InvoiceStatus.ISSUED);
+    creditNote.setType(InvoiceType.CREDIT_NOTE);
+    creditNote.setOriginalInvoice(issuedInvoice);
+    creditNote.setPostedTransaction(null); // No transaction
+
+    // Total of 0 for simplicity
+    when(invoiceRepository.save(any(SalesInvoice.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    // When
+    SalesInvoice voided = invoiceService.voidCreditNote(creditNote, user, null);
+
+    // Then
+    assertEquals(InvoiceStatus.VOID, voided.getStatus());
+    verify(postingService, never()).reverseTransaction(any(), any(), any());
+  }
 }
