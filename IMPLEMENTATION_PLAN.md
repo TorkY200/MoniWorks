@@ -51,12 +51,13 @@
 - **Phase 44 Split Transaction for Bank Reconciliation COMPLETE** - Tag: 0.5.6
 - **Phase 45 Allocation Rule Enhancements COMPLETE** - Tag: 0.5.7
 - **Phase 46 Debit Notes for Supplier Bills COMPLETE** - Tag: 0.5.8
-- All 234 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 24, SupplierBillServiceTest: 15)
+- **Phase 47 Transaction CSV Import COMPLETE** - Tag: 0.5.9
+- All 255 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 24, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
 - Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql, V14__statement_runs.sql, V15__additional_permissions.sql, V16__user_security_level.sql, V17__user_invitations.sql, V18__credit_notes.sql, V19__reconciliation_match.sql, V20__ledger_entry_reconciliation.sql, V21__allocation_rule_amount_range.sql
 - All repository interfaces created (42 repositories)
-- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService, SalesInvoiceService, ReceivableAllocationService, SupplierBillService, PayableAllocationService, PaymentRunService, RemittanceAdviceService, DepartmentService, BudgetService, KPIService, RecurringTemplateService, ReportExportService, GlobalSearchService, SavedViewService, EmailService, InvoicePdfService, StatementService, RoleService, PermissionService, InvitationService
+- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService, SalesInvoiceService, ReceivableAllocationService, SupplierBillService, PayableAllocationService, PaymentRunService, RemittanceAdviceService, DepartmentService, BudgetService, KPIService, RecurringTemplateService, ReportExportService, GlobalSearchService, SavedViewService, EmailService, InvoicePdfService, StatementService, RoleService, PermissionService, InvitationService, TransactionImportService
 - Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView, AuditEventsView, ContactsView, ProductsView, SalesInvoicesView, SupplierBillsView, DepartmentsView, BudgetsView, KPIsView, RecurringTemplatesView, GlobalSearchView, StatementRunsView, UsersView, AcceptInvitationView, RolesView, CompanySettingsView
 - Security configuration with SecurityConfig and UserDetailsServiceImpl (using VaadinSecurityConfigurer API)
 
@@ -1295,6 +1296,54 @@ Per specs, Release 1 must deliver:
 - [x] All 234 tests passing (SupplierBillServiceTest: 15)
 - [x] No forbidden markers
 
+### Phase 47: Transaction CSV Import (COMPLETE) - Tag: 0.5.9
+- [x] TransactionImportService for CSV parsing (follows Contact/Product/Budget import pattern)
+  - Flexible column mapping with case-insensitive header matching
+  - Required columns: date, type (PAYMENT/RECEIPT/JOURNAL/TRANSFER), description, account_code, amount, direction (DEBIT/CREDIT/DR/CR)
+  - Optional columns: reference, tax_code, memo, department_code
+  - Multiple date format support (YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY, etc.)
+  - Amount parsing with currency symbol ($) and comma removal
+  - Direction shorthand support (DR/CR, D/C)
+  - Account and department code validation against company data
+- [x] Transaction grouping logic
+  - Lines with same date + type + description + reference are grouped into one transaction
+  - Validates transactions are balanced (debits equal credits)
+  - Option to disable grouping for individual line transactions
+- [x] Import configuration options
+  - Auto-post option to automatically post imported transactions
+  - Group by reference option for multi-line transaction grouping
+  - Preview mode to see changes before committing
+- [x] Import UI in TransactionsView
+  - "Import CSV" button in toolbar
+  - Import dialog with instructions and sample CSV download
+  - File upload with CSV format validation
+  - Preview of import results before committing
+  - "Auto-post transactions" checkbox option
+  - "Group lines by reference" checkbox option
+  - Error and warning display
+- [x] TransactionImportServiceTest with 21 unit tests covering:
+  - Valid CSV import with balanced transaction
+  - Missing required columns (date, type, description, account_code, amount, direction)
+  - Empty file handling
+  - Unbalanced transaction validation
+  - Account not found
+  - Invalid date format
+  - Invalid transaction type
+  - Invalid amount format
+  - Invalid direction format
+  - Tax code and memo parsing
+  - Department code parsing and validation
+  - Multiple date formats
+  - Amount with currency symbols and commas
+  - Direction shorthand (DR/CR)
+  - Auto-post enabled posts transaction
+  - Preview mode without saving
+  - Group by reference creates separate transactions
+  - Transfer transaction type
+  - Sample CSV content generation
+- [x] All 255 tests passing (TransactionImportServiceTest: 21)
+- [x] No forbidden markers
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -1372,6 +1421,7 @@ Per specs, Release 1 must deliver:
 - Split transaction pattern: Use Java records for validated DTOs (SplitAllocation), with Objects.requireNonNull and validation in compact constructor; BankFeedItem.SPLIT status is separate from MATCHED/CREATED to distinguish split allocations
 - AllocationRule.matches() now has overloaded version matches(description, amount) that checks both description and amount range; uses absolute value for amount comparison to handle both inflows and outflows
 - Debit notes for supplier bills mirror credit notes for invoices: BillType.DEBIT_NOTE uses DN- prefix, originalBill reference, reversed journal entries (DR AP, CR Expense, CR GST Paid)
+- Transaction CSV import groups lines by date + type + description + reference combination; each unique combo becomes one transaction. Validates balanced entries (debits = credits) before creating transactions.
 
 ## Technical Notes
 - Build: `./mvnw compile`

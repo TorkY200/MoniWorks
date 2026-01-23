@@ -3,6 +3,7 @@ package com.example.application.ui.views;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ import com.example.application.ui.MainLayout;
 import com.example.application.ui.components.GridCustomizer;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
@@ -80,6 +82,7 @@ public class TransactionsView extends VerticalLayout implements BeforeEnterObser
   private final PayableAllocationService payableAllocationService;
   private final SupplierBillService supplierBillService;
   private final BankImportService bankImportService;
+  private final TransactionImportService transactionImportService;
 
   private final Grid<Transaction> grid = new Grid<>();
   private final ComboBox<TransactionType> typeFilter = new ComboBox<>();
@@ -100,7 +103,8 @@ public class TransactionsView extends VerticalLayout implements BeforeEnterObser
       SalesInvoiceService salesInvoiceService,
       PayableAllocationService payableAllocationService,
       SupplierBillService supplierBillService,
-      BankImportService bankImportService) {
+      BankImportService bankImportService,
+      TransactionImportService transactionImportService) {
     this.transactionService = transactionService;
     this.postingService = postingService;
     this.accountService = accountService;
@@ -113,6 +117,7 @@ public class TransactionsView extends VerticalLayout implements BeforeEnterObser
     this.payableAllocationService = payableAllocationService;
     this.supplierBillService = supplierBillService;
     this.bankImportService = bankImportService;
+    this.transactionImportService = transactionImportService;
 
     addClassName("transactions-view");
     setSizeFull();
@@ -313,6 +318,10 @@ public class TransactionsView extends VerticalLayout implements BeforeEnterObser
     transferBtn.addThemeVariants(ButtonVariant.LUMO_CONTRAST);
     transferBtn.addClickListener(e -> openNewTransactionDialog(TransactionType.TRANSFER));
 
+    Button importBtn = new Button("Import CSV", VaadinIcon.UPLOAD.create());
+    importBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+    importBtn.addClickListener(e -> openImportDialog());
+
     Button refreshBtn = new Button(VaadinIcon.REFRESH.create());
     refreshBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
     refreshBtn.addClickListener(e -> loadTransactions());
@@ -325,7 +334,8 @@ public class TransactionsView extends VerticalLayout implements BeforeEnterObser
     filters.setAlignItems(FlexComponent.Alignment.BASELINE);
 
     HorizontalLayout buttons =
-        new HorizontalLayout(paymentBtn, receiptBtn, journalBtn, transferBtn, refreshBtn);
+        new HorizontalLayout(
+            paymentBtn, receiptBtn, journalBtn, transferBtn, importBtn, refreshBtn);
     buttons.setAlignItems(FlexComponent.Alignment.BASELINE);
 
     HorizontalLayout left = new HorizontalLayout(title, filters);
@@ -1686,5 +1696,198 @@ public class TransactionsView extends VerticalLayout implements BeforeEnterObser
             .addThemeVariants(NotificationVariant.LUMO_ERROR);
       }
     }
+  }
+
+  private void openImportDialog() {
+    Dialog dialog = new Dialog();
+    dialog.setHeaderTitle("Import Transactions from CSV");
+    dialog.setWidth("650px");
+
+    VerticalLayout layout = new VerticalLayout();
+    layout.setPadding(false);
+    layout.setSpacing(true);
+
+    // Instructions
+    Span instructions =
+        new Span(
+            "Upload a CSV file with transaction data. Required columns: date, type, description, "
+                + "account_code, amount, direction. "
+                + "Optional columns: reference, tax_code, memo, department_code. "
+                + "Transactions are grouped by date + type + description + reference - all lines "
+                + "with the same combination become one transaction.");
+    instructions
+        .getStyle()
+        .set("color", "var(--lumo-secondary-text-color)")
+        .set("font-size", "var(--lumo-font-size-s)");
+
+    // Download sample CSV link
+    String sampleCsv = transactionImportService.getSampleCsvContent();
+    StreamResource sampleResource =
+        new StreamResource(
+            "transactions_sample.csv",
+            () -> new ByteArrayInputStream(sampleCsv.getBytes(StandardCharsets.UTF_8)));
+    sampleResource.setContentType("text/csv");
+    Anchor downloadSample = new Anchor(sampleResource, "Download sample CSV");
+    downloadSample.getElement().setAttribute("download", true);
+    downloadSample.getStyle().set("font-size", "var(--lumo-font-size-s)");
+
+    // Options
+    Checkbox autoPostCheckbox = new Checkbox("Auto-post transactions after import");
+    autoPostCheckbox.setValue(false);
+    autoPostCheckbox.setHelperText("If unchecked, transactions are created as drafts");
+
+    Checkbox groupByReferenceCheckbox = new Checkbox("Group lines by reference");
+    groupByReferenceCheckbox.setValue(true);
+    groupByReferenceCheckbox.setHelperText(
+        "Lines with the same date, type, description, and reference become one transaction");
+
+    // File upload
+    MemoryBuffer buffer = new MemoryBuffer();
+    Upload upload = new Upload(buffer);
+    upload.setAcceptedFileTypes(".csv", "text/csv");
+    upload.setMaxFiles(1);
+    upload.setDropLabel(new Span("Drop CSV file here or click to upload"));
+    upload.setWidthFull();
+
+    // Preview/result area
+    VerticalLayout resultArea = new VerticalLayout();
+    resultArea.setPadding(false);
+    resultArea.setVisible(false);
+
+    // Import button
+    Button importButton = new Button("Import");
+    importButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+    importButton.setEnabled(false);
+
+    // Store the uploaded bytes for import
+    final byte[][] uploadedBytes = {null};
+
+    upload.addSucceededListener(
+        event -> {
+          try {
+            // Read the stream into bytes for multiple uses
+            uploadedBytes[0] = buffer.getInputStream().readAllBytes();
+
+            // Preview the import
+            Company company = companyContextService.getCurrentCompany();
+            TransactionImportService.ImportConfig config =
+                new TransactionImportService.ImportConfig(
+                    autoPostCheckbox.getValue(), groupByReferenceCheckbox.getValue());
+            TransactionImportService.ImportResult preview =
+                transactionImportService.previewImport(
+                    new ByteArrayInputStream(uploadedBytes[0]), company, config);
+
+            resultArea.removeAll();
+            if (preview.success()) {
+              Span previewText =
+                  new Span(
+                      String.format(
+                          "Preview: %d transactions to import, %d skipped",
+                          preview.imported(), preview.skipped()));
+              previewText.getStyle().set("color", "var(--lumo-success-text-color)");
+              resultArea.add(previewText);
+
+              if (!preview.warnings().isEmpty()) {
+                for (String warning : preview.warnings()) {
+                  Span warningSpan = new Span(warning);
+                  warningSpan
+                      .getStyle()
+                      .set("color", "var(--lumo-warning-text-color)")
+                      .set("font-size", "var(--lumo-font-size-s)");
+                  resultArea.add(warningSpan);
+                }
+              }
+              importButton.setEnabled(true);
+            } else {
+              Span errorText = new Span("Import preview failed:");
+              errorText.getStyle().set("color", "var(--lumo-error-text-color)");
+              resultArea.add(errorText);
+              for (String error : preview.errors()) {
+                Span errorSpan = new Span(error);
+                errorSpan
+                    .getStyle()
+                    .set("color", "var(--lumo-error-text-color)")
+                    .set("font-size", "var(--lumo-font-size-s)");
+                resultArea.add(errorSpan);
+              }
+              importButton.setEnabled(false);
+            }
+            resultArea.setVisible(true);
+          } catch (IOException e) {
+            Notification.show("Error reading file: " + e.getMessage())
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+          }
+        });
+
+    upload.addFileRejectedListener(
+        event -> {
+          Notification.show("Invalid file: " + event.getErrorMessage())
+              .addThemeVariants(NotificationVariant.LUMO_ERROR);
+        });
+
+    importButton.addClickListener(
+        event -> {
+          if (uploadedBytes[0] == null) {
+            Notification.show("Please upload a CSV file first")
+                .addThemeVariants(NotificationVariant.LUMO_WARNING);
+            return;
+          }
+
+          try {
+            Company company = companyContextService.getCurrentCompany();
+            User user = companyContextService.getCurrentUser();
+            TransactionImportService.ImportConfig config =
+                new TransactionImportService.ImportConfig(
+                    autoPostCheckbox.getValue(), groupByReferenceCheckbox.getValue());
+            TransactionImportService.ImportResult result =
+                transactionImportService.importTransactions(
+                    new ByteArrayInputStream(uploadedBytes[0]), company, user, config);
+
+            if (result.success()) {
+              String statusMsg = autoPostCheckbox.getValue() ? " (posted)" : " (saved as drafts)";
+              Notification.show(
+                      "Successfully imported "
+                          + result.imported()
+                          + " transactions"
+                          + statusMsg
+                          + (result.skipped() > 0 ? ", skipped " + result.skipped() : ""),
+                      5000,
+                      Notification.Position.MIDDLE)
+                  .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+              dialog.close();
+              loadTransactions();
+            } else {
+              resultArea.removeAll();
+              Span errorText = new Span("Import failed:");
+              errorText.getStyle().set("color", "var(--lumo-error-text-color)");
+              resultArea.add(errorText);
+              for (String error : result.errors()) {
+                Span errorSpan = new Span(error);
+                errorSpan
+                    .getStyle()
+                    .set("color", "var(--lumo-error-text-color)")
+                    .set("font-size", "var(--lumo-font-size-s)");
+                resultArea.add(errorSpan);
+              }
+            }
+          } catch (IOException e) {
+            Notification.show("Error importing file: " + e.getMessage())
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+          }
+        });
+
+    Button cancelButton = new Button("Cancel", e -> dialog.close());
+
+    layout.add(
+        instructions,
+        downloadSample,
+        autoPostCheckbox,
+        groupByReferenceCheckbox,
+        upload,
+        resultArea);
+
+    dialog.add(layout);
+    dialog.getFooter().add(cancelButton, importButton);
+    dialog.open();
   }
 }
