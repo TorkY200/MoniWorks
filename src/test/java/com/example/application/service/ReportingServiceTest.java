@@ -40,6 +40,8 @@ class ReportingServiceTest {
 
   @Mock private SupplierBillRepository supplierBillRepository;
 
+  @Mock private BankFeedItemRepository bankFeedItemRepository;
+
   private ReportingService reportingService;
 
   private Company company;
@@ -59,7 +61,8 @@ class ReportingServiceTest {
             budgetLineRepository,
             periodRepository,
             salesInvoiceRepository,
-            supplierBillRepository);
+            supplierBillRepository,
+            bankFeedItemRepository);
 
     company = new Company("Test Company", "NZ", "NZD", LocalDate.of(2024, 4, 1));
     company.setId(1L);

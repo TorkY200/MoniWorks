@@ -73,6 +73,7 @@ public class ReportsView extends VerticalLayout {
   private final VerticalLayout apAgingContent = new VerticalLayout();
   private final VerticalLayout cashflowContent = new VerticalLayout();
   private final VerticalLayout bankRegisterContent = new VerticalLayout();
+  private final VerticalLayout reconciliationStatusContent = new VerticalLayout();
 
   // Department filter for P&L
   private ComboBox<Department> plDepartmentFilter;
@@ -93,6 +94,7 @@ public class ReportsView extends VerticalLayout {
   private HorizontalLayout apAgingExportButtons;
   private HorizontalLayout cashflowExportButtons;
   private HorizontalLayout bankRegisterExportButtons;
+  private HorizontalLayout reconciliationStatusExportButtons;
 
   // Date pickers for aging reports
   private DatePicker arAgingAsOfDate;
@@ -107,6 +109,7 @@ public class ReportsView extends VerticalLayout {
   private ApAgingReport currentApAgingReport;
   private CashflowStatement currentCashflowStatement;
   private BankRegister currentBankRegister;
+  private ReconciliationStatus currentReconciliationStatus;
 
   private static final DecimalFormat MONEY_FORMAT = new DecimalFormat("#,##0.00");
   private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd MMM yyyy");
@@ -242,6 +245,12 @@ public class ReportsView extends VerticalLayout {
     Tab bankRegisterTab = new Tab(VaadinIcon.BOOK.create(), new Span("Bank Register"));
     VerticalLayout bankRegisterLayout = createBankRegisterTab();
     tabSheet.add(bankRegisterTab, bankRegisterLayout);
+
+    // Reconciliation Status Tab
+    Tab reconciliationStatusTab =
+        new Tab(VaadinIcon.CHECK_CIRCLE.create(), new Span("Reconciliation Status"));
+    VerticalLayout reconciliationStatusLayout = createReconciliationStatusTab();
+    tabSheet.add(reconciliationStatusTab, reconciliationStatusLayout);
 
     return tabSheet;
   }
@@ -2575,5 +2584,247 @@ public class ReportsView extends VerticalLayout {
 
     bankRegisterExportButtons.add(pdfLink, excelLink);
     bankRegisterExportButtons.setVisible(true);
+  }
+
+  private VerticalLayout createReconciliationStatusTab() {
+    VerticalLayout layout = new VerticalLayout();
+    layout.setSizeFull();
+    layout.setPadding(false);
+
+    Button generateBtn = new Button("Generate Report", VaadinIcon.REFRESH.create());
+    generateBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+    generateBtn.addClickListener(e -> loadReconciliationStatus());
+
+    // Export buttons container
+    reconciliationStatusExportButtons = new HorizontalLayout();
+    reconciliationStatusExportButtons.setSpacing(true);
+    reconciliationStatusExportButtons.setVisible(false);
+
+    HorizontalLayout controls =
+        new HorizontalLayout(generateBtn, reconciliationStatusExportButtons);
+    controls.setAlignItems(FlexComponent.Alignment.BASELINE);
+    controls.setSpacing(true);
+
+    // Content area
+    reconciliationStatusContent.setSizeFull();
+    reconciliationStatusContent.setPadding(false);
+
+    // Initial message
+    Span initialMessage =
+        new Span("Click Generate Report to view the reconciliation status of all bank accounts");
+    initialMessage.getStyle().set("color", "var(--lumo-secondary-text-color)");
+    reconciliationStatusContent.add(initialMessage);
+
+    layout.add(controls, reconciliationStatusContent);
+    return layout;
+  }
+
+  private void loadReconciliationStatus() {
+    try {
+      Company company = companyContextService.getCurrentCompany();
+      int securityLevel = companyContextService.getCurrentSecurityLevel();
+      ReconciliationStatus report =
+          reportingService.generateReconciliationStatus(company, securityLevel);
+      displayReconciliationStatus(report);
+    } catch (Exception e) {
+      Notification.show(
+              "Error generating report: " + e.getMessage(), 3000, Notification.Position.MIDDLE)
+          .addThemeVariants(NotificationVariant.LUMO_ERROR);
+    }
+  }
+
+  private void displayReconciliationStatus(ReconciliationStatus report) {
+    reconciliationStatusContent.removeAll();
+    currentReconciliationStatus = report;
+    updateReconciliationStatusExportButtons();
+
+    // Report header
+    H3 header = new H3("Bank Reconciliation Status");
+    Span subtitle = new Span("As of: " + report.asOfDate().format(DATE_FORMAT));
+    subtitle.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+    // Overall status indicator
+    boolean isFullyReconciled =
+        report.grandTotal() > 0
+            && report.overallReconciledPercent().compareTo(new BigDecimal("100")) >= 0;
+    Span overallStatus = new Span(isFullyReconciled ? "FULLY RECONCILED" : "ITEMS PENDING");
+    overallStatus.getStyle().set("font-weight", "bold");
+    overallStatus.getStyle().set("padding", "4px 8px");
+    overallStatus.getStyle().set("border-radius", "4px");
+    if (isFullyReconciled) {
+      overallStatus.getStyle().set("background-color", "var(--lumo-success-color-10pct)");
+      overallStatus.getStyle().set("color", "var(--lumo-success-text-color)");
+    } else {
+      overallStatus.getStyle().set("background-color", "var(--lumo-warning-color-10pct)");
+      overallStatus.getStyle().set("color", "var(--lumo-warning-text-color)");
+    }
+
+    HorizontalLayout headerRow = new HorizontalLayout(header, overallStatus);
+    headerRow.setAlignItems(FlexComponent.Alignment.BASELINE);
+
+    // Summary statistics
+    HorizontalLayout summaryRow = new HorizontalLayout();
+    summaryRow.setWidthFull();
+    summaryRow.setSpacing(true);
+    summaryRow
+        .getStyle()
+        .set("padding", "12px")
+        .set("background-color", "var(--lumo-contrast-5pct)");
+
+    summaryRow.add(createStatBox("Total Items", String.valueOf(report.grandTotal())));
+    summaryRow.add(
+        createStatBox("New", String.valueOf(report.totalNew()), "var(--lumo-primary-color)"));
+    summaryRow.add(
+        createStatBox(
+            "Matched", String.valueOf(report.totalMatched()), "var(--lumo-success-color)"));
+    summaryRow.add(
+        createStatBox(
+            "Created", String.valueOf(report.totalCreated()), "var(--lumo-success-color)"));
+    summaryRow.add(
+        createStatBox(
+            "Ignored", String.valueOf(report.totalIgnored()), "var(--lumo-secondary-text-color)"));
+    summaryRow.add(
+        createStatBox(
+            "Unreconciled Amount",
+            formatMoney(report.totalUnreconciledAmount()),
+            report.totalUnreconciledAmount().compareTo(BigDecimal.ZERO) > 0
+                ? "var(--lumo-warning-color)"
+                : "var(--lumo-success-color)"));
+    summaryRow.add(
+        createStatBox(
+            "Reconciled %",
+            report.overallReconciledPercent().setScale(1, java.math.RoundingMode.HALF_UP) + "%",
+            report.overallReconciledPercent().compareTo(new BigDecimal("100")) >= 0
+                ? "var(--lumo-success-color)"
+                : "var(--lumo-warning-color)"));
+
+    // Account details grid
+    Grid<ReconciliationAccountSummary> grid = new Grid<>();
+    grid.setSizeFull();
+    grid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES, GridVariant.LUMO_COMPACT);
+
+    grid.addColumn(summary -> summary.account().getCode())
+        .setHeader("Account")
+        .setAutoWidth(true)
+        .setFlexGrow(0);
+
+    grid.addColumn(summary -> summary.account().getName()).setHeader("Name").setFlexGrow(1);
+
+    grid.addColumn(ReconciliationAccountSummary::newCount)
+        .setHeader("New")
+        .setAutoWidth(true)
+        .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+    grid.addColumn(ReconciliationAccountSummary::matchedCount)
+        .setHeader("Matched")
+        .setAutoWidth(true)
+        .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+    grid.addColumn(ReconciliationAccountSummary::createdCount)
+        .setHeader("Created")
+        .setAutoWidth(true)
+        .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+    grid.addColumn(ReconciliationAccountSummary::ignoredCount)
+        .setHeader("Ignored")
+        .setAutoWidth(true)
+        .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+    grid.addColumn(ReconciliationAccountSummary::totalItems)
+        .setHeader("Total")
+        .setAutoWidth(true)
+        .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+    grid.addColumn(summary -> formatMoney(summary.unreconciledAmount()))
+        .setHeader("Unreconciled $")
+        .setAutoWidth(true)
+        .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+    grid.addColumn(
+            summary ->
+                summary.reconciledPercent().setScale(1, java.math.RoundingMode.HALF_UP) + "%")
+        .setHeader("Reconciled %")
+        .setAutoWidth(true)
+        .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+    grid.addColumn(
+            summary ->
+                summary.oldestUnmatchedDate() != null
+                    ? summary.oldestUnmatchedDate().format(DATE_FORMAT)
+                    : "-")
+        .setHeader("Oldest Pending")
+        .setAutoWidth(true);
+
+    grid.setItems(report.accountSummaries());
+
+    reconciliationStatusContent.add(headerRow, subtitle, summaryRow, grid);
+  }
+
+  private VerticalLayout createStatBox(String label, String value) {
+    return createStatBox(label, value, null);
+  }
+
+  private VerticalLayout createStatBox(String label, String value, String color) {
+    VerticalLayout box = new VerticalLayout();
+    box.setSpacing(false);
+    box.setPadding(false);
+    box.setAlignItems(FlexComponent.Alignment.CENTER);
+
+    Span labelSpan = new Span(label);
+    labelSpan.getStyle().set("font-size", "var(--lumo-font-size-s)");
+    labelSpan.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+    Span valueSpan = new Span(value);
+    valueSpan.getStyle().set("font-size", "var(--lumo-font-size-l)");
+    valueSpan.getStyle().set("font-weight", "bold");
+    if (color != null) {
+      valueSpan.getStyle().set("color", color);
+    }
+
+    box.add(labelSpan, valueSpan);
+    return box;
+  }
+
+  private void updateReconciliationStatusExportButtons() {
+    reconciliationStatusExportButtons.removeAll();
+
+    if (currentReconciliationStatus == null) {
+      return;
+    }
+
+    Company company = companyContextService.getCurrentCompany();
+    String dateStr =
+        currentReconciliationStatus.asOfDate().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+
+    // PDF Export
+    StreamResource pdfResource =
+        new StreamResource(
+            "ReconciliationStatus_" + dateStr + ".pdf",
+            () ->
+                new ByteArrayInputStream(
+                    reportExportService.exportReconciliationStatusToPdf(
+                        currentReconciliationStatus, company)));
+    Anchor pdfLink = new Anchor(pdfResource, "");
+    pdfLink.getElement().setAttribute("download", true);
+    Button pdfBtn = new Button("PDF", VaadinIcon.FILE_TEXT.create());
+    pdfBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+    pdfLink.add(pdfBtn);
+
+    // Excel Export
+    StreamResource excelResource =
+        new StreamResource(
+            "ReconciliationStatus_" + dateStr + ".xlsx",
+            () ->
+                new ByteArrayInputStream(
+                    reportExportService.exportReconciliationStatusToExcel(
+                        currentReconciliationStatus, company)));
+    Anchor excelLink = new Anchor(excelResource, "");
+    excelLink.getElement().setAttribute("download", true);
+    Button excelBtn = new Button("Excel", VaadinIcon.FILE_TABLE.create());
+    excelBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+    excelLink.add(excelBtn);
+
+    reconciliationStatusExportButtons.add(pdfLink, excelLink);
+    reconciliationStatusExportButtons.setVisible(true);
   }
 }

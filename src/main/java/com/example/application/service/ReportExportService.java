@@ -2155,4 +2155,287 @@ public class ReportExportService {
     amountCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
     table.addCell(amountCell);
   }
+
+  // ==================== RECONCILIATION STATUS EXPORTS ====================
+
+  /**
+   * Exports Bank Reconciliation Status report to PDF format. Shows the reconciliation status of all
+   * bank accounts with item counts and unreconciled amounts.
+   */
+  public byte[] exportReconciliationStatusToPdf(
+      ReportingService.ReconciliationStatus report, Company company) {
+    try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+      Document document = new Document(PageSize.A4.rotate()); // Landscape for more columns
+      PdfWriter.getInstance(document, baos);
+      document.open();
+
+      // Title
+      addReportTitle(document, company, "Bank Reconciliation Status");
+      addReportSubtitle(document, "As of: " + report.asOfDate().format(dateFormatter));
+
+      // Overall status
+      boolean isFullyReconciled =
+          report.grandTotal() > 0
+              && report.overallReconciledPercent().compareTo(new BigDecimal("100")) >= 0;
+      String statusText = isFullyReconciled ? "FULLY RECONCILED" : "ITEMS PENDING";
+      Paragraph status =
+          new Paragraph(
+              statusText,
+              new Font(
+                  Font.HELVETICA, 10, Font.BOLD, isFullyReconciled ? PROFIT_COLOR : LOSS_COLOR));
+      status.setAlignment(Element.ALIGN_CENTER);
+      status.setSpacingAfter(10);
+      document.add(status);
+
+      // Summary statistics table
+      PdfPTable summaryTable = new PdfPTable(7);
+      summaryTable.setWidthPercentage(100);
+      summaryTable.setSpacingBefore(10);
+      summaryTable.setSpacingAfter(15);
+
+      String[] summaryHeaders = {
+        "Total Items", "New", "Matched", "Created", "Ignored", "Unreconciled $", "Reconciled %"
+      };
+      for (String header : summaryHeaders) {
+        PdfPCell cell = new PdfPCell(new Phrase(header, TABLE_HEADER_FONT));
+        cell.setBackgroundColor(HEADER_BG);
+        cell.setPadding(8);
+        cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        summaryTable.addCell(cell);
+      }
+
+      addSummaryCellCenter(summaryTable, String.valueOf(report.grandTotal()));
+      addSummaryCellCenter(summaryTable, String.valueOf(report.totalNew()));
+      addSummaryCellCenter(summaryTable, String.valueOf(report.totalMatched()));
+      addSummaryCellCenter(summaryTable, String.valueOf(report.totalCreated()));
+      addSummaryCellCenter(summaryTable, String.valueOf(report.totalIgnored()));
+      addSummaryCellCenter(summaryTable, formatCurrency(report.totalUnreconciledAmount()));
+      addSummaryCellCenter(
+          summaryTable,
+          report.overallReconciledPercent().setScale(1, java.math.RoundingMode.HALF_UP) + "%");
+
+      document.add(summaryTable);
+
+      // Account details section
+      Paragraph detailsTitle = new Paragraph("Account Details", SECTION_FONT);
+      detailsTitle.setSpacingBefore(10);
+      detailsTitle.setSpacingAfter(10);
+      document.add(detailsTitle);
+
+      // Account details table
+      PdfPTable table = new PdfPTable(9);
+      table.setWidthPercentage(100);
+      float[] columnWidths = {60f, 120f, 40f, 50f, 50f, 45f, 40f, 70f, 60f};
+      table.setWidths(columnWidths);
+
+      String[] headers = {
+        "Account",
+        "Name",
+        "New",
+        "Matched",
+        "Created",
+        "Ignored",
+        "Total",
+        "Unreconciled $",
+        "Reconciled %"
+      };
+      for (String header : headers) {
+        PdfPCell cell = new PdfPCell(new Phrase(header, TABLE_HEADER_FONT));
+        cell.setBackgroundColor(HEADER_BG);
+        cell.setPadding(6);
+        cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        table.addCell(cell);
+      }
+
+      int rowIndex = 0;
+      for (ReportingService.ReconciliationAccountSummary summary : report.accountSummaries()) {
+        Color bgColor = rowIndex % 2 == 0 ? Color.WHITE : ALT_ROW_BG;
+        boolean isReconciled = summary.reconciledPercent().compareTo(new BigDecimal("100")) >= 0;
+
+        addTableCell(table, summary.account().getCode(), bgColor, Element.ALIGN_LEFT);
+        addTableCell(table, summary.account().getName(), bgColor, Element.ALIGN_LEFT);
+        addTableCell(table, String.valueOf(summary.newCount()), bgColor, Element.ALIGN_RIGHT);
+        addTableCell(table, String.valueOf(summary.matchedCount()), bgColor, Element.ALIGN_RIGHT);
+        addTableCell(table, String.valueOf(summary.createdCount()), bgColor, Element.ALIGN_RIGHT);
+        addTableCell(table, String.valueOf(summary.ignoredCount()), bgColor, Element.ALIGN_RIGHT);
+        addTableCell(table, String.valueOf(summary.totalItems()), bgColor, Element.ALIGN_RIGHT);
+        addTableCell(
+            table, formatCurrency(summary.unreconciledAmount()), bgColor, Element.ALIGN_RIGHT);
+
+        // Color-code reconciled percentage
+        Font percentFont =
+            new Font(Font.HELVETICA, 9, Font.BOLD, isReconciled ? PROFIT_COLOR : LOSS_COLOR);
+        String percentText =
+            summary.reconciledPercent().setScale(1, java.math.RoundingMode.HALF_UP) + "%";
+        PdfPCell percentCell = new PdfPCell(new Phrase(percentText, percentFont));
+        percentCell.setBackgroundColor(bgColor);
+        percentCell.setPadding(6);
+        percentCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        percentCell.setBorderColor(Color.LIGHT_GRAY);
+        table.addCell(percentCell);
+
+        rowIndex++;
+      }
+
+      document.add(table);
+
+      // Footer with generation timestamp
+      Paragraph footer =
+          new Paragraph(
+              "Generated: " + LocalDate.now().format(dateFormatter) + " | MoniWorks", SMALL_FONT);
+      footer.setAlignment(Element.ALIGN_CENTER);
+      footer.setSpacingBefore(20);
+      document.add(footer);
+
+      document.close();
+      log.info("Generated Reconciliation Status PDF ({} bytes)", baos.size());
+      return baos.toByteArray();
+
+    } catch (DocumentException | IOException e) {
+      log.error("Failed to generate Reconciliation Status PDF", e);
+      throw new RuntimeException(
+          "Failed to generate Reconciliation Status PDF: " + e.getMessage(), e);
+    }
+  }
+
+  /** Exports Bank Reconciliation Status report to Excel format. */
+  public byte[] exportReconciliationStatusToExcel(
+      ReportingService.ReconciliationStatus report, Company company) {
+    try (XSSFWorkbook workbook = new XSSFWorkbook();
+        ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+
+      Sheet sheet = workbook.createSheet("Reconciliation Status");
+      int rowNum = 0;
+
+      CellStyle headerStyle = createHeaderStyle(workbook);
+      CellStyle currencyStyle = createCurrencyStyle(workbook);
+      CellStyle titleStyle = createTitleStyle(workbook);
+      CellStyle percentStyle = createPercentStyle(workbook);
+
+      // Title
+      org.apache.poi.ss.usermodel.Row titleRow = sheet.createRow(rowNum++);
+      org.apache.poi.ss.usermodel.Cell titleCell = titleRow.createCell(0);
+      titleCell.setCellValue(company.getName() + " - Bank Reconciliation Status");
+      titleCell.setCellStyle(titleStyle);
+      sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 8));
+
+      // As of date
+      org.apache.poi.ss.usermodel.Row dateRow = sheet.createRow(rowNum++);
+      dateRow.createCell(0).setCellValue("As of: " + report.asOfDate().format(dateFormatter));
+
+      // Status
+      org.apache.poi.ss.usermodel.Row statusRow = sheet.createRow(rowNum++);
+      boolean isFullyReconciled =
+          report.grandTotal() > 0
+              && report.overallReconciledPercent().compareTo(new BigDecimal("100")) >= 0;
+      statusRow
+          .createCell(0)
+          .setCellValue(isFullyReconciled ? "FULLY RECONCILED" : "ITEMS PENDING");
+
+      rowNum++; // Empty row
+
+      // Summary section
+      org.apache.poi.ss.usermodel.Row summaryLabelRow = sheet.createRow(rowNum++);
+      summaryLabelRow.createCell(0).setCellValue("Summary");
+
+      org.apache.poi.ss.usermodel.Row summaryHeaderRow = sheet.createRow(rowNum++);
+      String[] summaryHeaders = {
+        "Total Items", "New", "Matched", "Created", "Ignored", "Unreconciled $", "Reconciled %"
+      };
+      for (int i = 0; i < summaryHeaders.length; i++) {
+        org.apache.poi.ss.usermodel.Cell cell = summaryHeaderRow.createCell(i);
+        cell.setCellValue(summaryHeaders[i]);
+        cell.setCellStyle(headerStyle);
+      }
+
+      org.apache.poi.ss.usermodel.Row summaryDataRow = sheet.createRow(rowNum++);
+      summaryDataRow.createCell(0).setCellValue(report.grandTotal());
+      summaryDataRow.createCell(1).setCellValue(report.totalNew());
+      summaryDataRow.createCell(2).setCellValue(report.totalMatched());
+      summaryDataRow.createCell(3).setCellValue(report.totalCreated());
+      summaryDataRow.createCell(4).setCellValue(report.totalIgnored());
+
+      org.apache.poi.ss.usermodel.Cell unreconciledCell = summaryDataRow.createCell(5);
+      unreconciledCell.setCellValue(report.totalUnreconciledAmount().doubleValue());
+      unreconciledCell.setCellStyle(currencyStyle);
+
+      org.apache.poi.ss.usermodel.Cell percentCell = summaryDataRow.createCell(6);
+      percentCell.setCellValue(report.overallReconciledPercent().doubleValue() / 100);
+      percentCell.setCellStyle(percentStyle);
+
+      rowNum++; // Empty row
+
+      // Account details section
+      org.apache.poi.ss.usermodel.Row detailsLabelRow = sheet.createRow(rowNum++);
+      detailsLabelRow.createCell(0).setCellValue("Account Details");
+
+      // Header row for account details
+      org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(rowNum++);
+      String[] headers = {
+        "Account",
+        "Name",
+        "New",
+        "Matched",
+        "Created",
+        "Ignored",
+        "Total",
+        "Unreconciled $",
+        "Reconciled %",
+        "Oldest Pending"
+      };
+      for (int i = 0; i < headers.length; i++) {
+        org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
+        cell.setCellValue(headers[i]);
+        cell.setCellStyle(headerStyle);
+      }
+
+      // Data rows
+      for (ReportingService.ReconciliationAccountSummary summary : report.accountSummaries()) {
+        org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowNum++);
+        row.createCell(0).setCellValue(summary.account().getCode());
+        row.createCell(1).setCellValue(summary.account().getName());
+        row.createCell(2).setCellValue(summary.newCount());
+        row.createCell(3).setCellValue(summary.matchedCount());
+        row.createCell(4).setCellValue(summary.createdCount());
+        row.createCell(5).setCellValue(summary.ignoredCount());
+        row.createCell(6).setCellValue(summary.totalItems());
+
+        org.apache.poi.ss.usermodel.Cell amountCell = row.createCell(7);
+        amountCell.setCellValue(summary.unreconciledAmount().doubleValue());
+        amountCell.setCellStyle(currencyStyle);
+
+        org.apache.poi.ss.usermodel.Cell pctCell = row.createCell(8);
+        pctCell.setCellValue(summary.reconciledPercent().doubleValue() / 100);
+        pctCell.setCellStyle(percentStyle);
+
+        row.createCell(9)
+            .setCellValue(
+                summary.oldestUnmatchedDate() != null
+                    ? summary.oldestUnmatchedDate().format(dateFormatter)
+                    : "");
+      }
+
+      // Auto-size columns
+      for (int i = 0; i < 10; i++) {
+        sheet.autoSizeColumn(i);
+      }
+
+      workbook.write(baos);
+      log.info("Generated Reconciliation Status Excel ({} bytes)", baos.size());
+      return baos.toByteArray();
+
+    } catch (IOException e) {
+      log.error("Failed to generate Reconciliation Status Excel", e);
+      throw new RuntimeException(
+          "Failed to generate Reconciliation Status Excel: " + e.getMessage(), e);
+    }
+  }
+
+  private void addSummaryCellCenter(PdfPTable table, String text) {
+    PdfPCell cell = new PdfPCell(new Phrase(text, TABLE_CELL_BOLD));
+    cell.setPadding(8);
+    cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+    cell.setBorderColor(Color.LIGHT_GRAY);
+    table.addCell(cell);
+  }
 }

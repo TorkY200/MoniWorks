@@ -27,6 +27,7 @@ public class ReportingService {
   private final PeriodRepository periodRepository;
   private final SalesInvoiceRepository salesInvoiceRepository;
   private final SupplierBillRepository supplierBillRepository;
+  private final BankFeedItemRepository bankFeedItemRepository;
 
   public ReportingService(
       AccountRepository accountRepository,
@@ -34,13 +35,15 @@ public class ReportingService {
       BudgetLineRepository budgetLineRepository,
       PeriodRepository periodRepository,
       SalesInvoiceRepository salesInvoiceRepository,
-      SupplierBillRepository supplierBillRepository) {
+      SupplierBillRepository supplierBillRepository,
+      BankFeedItemRepository bankFeedItemRepository) {
     this.accountRepository = accountRepository;
     this.ledgerEntryRepository = ledgerEntryRepository;
     this.budgetLineRepository = budgetLineRepository;
     this.periodRepository = periodRepository;
     this.salesInvoiceRepository = salesInvoiceRepository;
     this.supplierBillRepository = supplierBillRepository;
+    this.bankFeedItemRepository = bankFeedItemRepository;
   }
 
   /**
@@ -1109,4 +1112,131 @@ public class ReportingService {
       BigDecimal credit,
       BigDecimal runningBalance,
       Long transactionId) {}
+
+  // ==================== RECONCILIATION STATUS REPORT ====================
+
+  /**
+   * Generates a Bank Reconciliation Status report showing the reconciliation state of bank feed
+   * items across all bank accounts. This report helps users understand how many imported
+   * transactions have been matched, created, or remain unreconciled.
+   */
+  public ReconciliationStatus generateReconciliationStatus(Company company) {
+    return generateReconciliationStatus(company, Integer.MAX_VALUE);
+  }
+
+  /**
+   * Generates a Bank Reconciliation Status report with security level filtering.
+   *
+   * @param company the company
+   * @param maxSecurityLevel the user's maximum security level
+   * @return the reconciliation status with per-account breakdowns
+   */
+  public ReconciliationStatus generateReconciliationStatus(Company company, int maxSecurityLevel) {
+    // Get all bank accounts, filtered by security level
+    List<Account> bankAccounts =
+        accountRepository.findBankAccountsByCompanyWithSecurityLevel(company, maxSecurityLevel);
+
+    List<ReconciliationAccountSummary> accountSummaries = new ArrayList<>();
+
+    long totalNew = 0;
+    long totalMatched = 0;
+    long totalCreated = 0;
+    long totalIgnored = 0;
+    BigDecimal totalUnreconciledAmount = BigDecimal.ZERO;
+
+    for (Account bankAccount : bankAccounts) {
+      long newCount =
+          bankFeedItemRepository.countByAccountAndStatus(
+              bankAccount, BankFeedItem.FeedItemStatus.NEW);
+      long matchedCount =
+          bankFeedItemRepository.countByAccountAndStatus(
+              bankAccount, BankFeedItem.FeedItemStatus.MATCHED);
+      long createdCount =
+          bankFeedItemRepository.countByAccountAndStatus(
+              bankAccount, BankFeedItem.FeedItemStatus.CREATED);
+      long ignoredCount =
+          bankFeedItemRepository.countByAccountAndStatus(
+              bankAccount, BankFeedItem.FeedItemStatus.IGNORED);
+
+      long totalItems = newCount + matchedCount + createdCount + ignoredCount;
+
+      BigDecimal unreconciledAmount =
+          bankFeedItemRepository.sumAmountByAccountAndStatus(
+              bankAccount, BankFeedItem.FeedItemStatus.NEW);
+      if (unreconciledAmount == null) unreconciledAmount = BigDecimal.ZERO;
+
+      LocalDate oldestUnmatchedDate =
+          bankFeedItemRepository.findOldestUnmatchedDateByAccount(bankAccount);
+
+      // Calculate reconciliation percentage
+      BigDecimal reconciledPercent = BigDecimal.ZERO;
+      if (totalItems > 0) {
+        long reconciledItems = matchedCount + createdCount + ignoredCount;
+        reconciledPercent =
+            BigDecimal.valueOf(reconciledItems * 100)
+                .divide(BigDecimal.valueOf(totalItems), 1, RoundingMode.HALF_UP);
+      }
+
+      accountSummaries.add(
+          new ReconciliationAccountSummary(
+              bankAccount,
+              newCount,
+              matchedCount,
+              createdCount,
+              ignoredCount,
+              totalItems,
+              unreconciledAmount,
+              reconciledPercent,
+              oldestUnmatchedDate));
+
+      totalNew += newCount;
+      totalMatched += matchedCount;
+      totalCreated += createdCount;
+      totalIgnored += ignoredCount;
+      totalUnreconciledAmount = totalUnreconciledAmount.add(unreconciledAmount);
+    }
+
+    long grandTotalItems = totalNew + totalMatched + totalCreated + totalIgnored;
+    BigDecimal overallReconciledPercent = BigDecimal.ZERO;
+    if (grandTotalItems > 0) {
+      long reconciledItems = totalMatched + totalCreated + totalIgnored;
+      overallReconciledPercent =
+          BigDecimal.valueOf(reconciledItems * 100)
+              .divide(BigDecimal.valueOf(grandTotalItems), 1, RoundingMode.HALF_UP);
+    }
+
+    return new ReconciliationStatus(
+        LocalDate.now(),
+        accountSummaries,
+        totalNew,
+        totalMatched,
+        totalCreated,
+        totalIgnored,
+        grandTotalItems,
+        totalUnreconciledAmount,
+        overallReconciledPercent);
+  }
+
+  // Reconciliation Status Report records
+  public record ReconciliationStatus(
+      LocalDate asOfDate,
+      List<ReconciliationAccountSummary> accountSummaries,
+      long totalNew,
+      long totalMatched,
+      long totalCreated,
+      long totalIgnored,
+      long grandTotal,
+      BigDecimal totalUnreconciledAmount,
+      BigDecimal overallReconciledPercent) {}
+
+  public record ReconciliationAccountSummary(
+      Account account,
+      long newCount,
+      long matchedCount,
+      long createdCount,
+      long ignoredCount,
+      long totalItems,
+      BigDecimal unreconciledAmount,
+      BigDecimal reconciledPercent,
+      LocalDate oldestUnmatchedDate) {}
 }

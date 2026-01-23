@@ -43,6 +43,7 @@
 - **Phase 35 Contact Tax Override Auto-Population COMPLETE** - Tag: 0.4.7
 - **Phase 36 Quality Tooling & Keyboard Shortcuts COMPLETE** - Tag: 0.4.8
 - **Phase 37 KPI & Income Trend Charting COMPLETE** - Tag: 0.4.9
+- **Phase 38 Bank Reconciliation Status Report COMPLETE** - Tag: 0.5.0
 - All 150 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, InvitationServiceTest: 18, SalesInvoiceServiceTest: 11, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation
 - Database configured: H2 for development, PostgreSQL for production
@@ -1044,6 +1045,34 @@ Per specs, Release 1 must deliver:
   - Trend indicator comparing current month vs previous month
   - Respects user security level for account filtering
 - [x] Dashboard now has 6 tiles: Cash Balance, This Month, Income Trend, GST Estimate, Overdue Receivables, Overdue Payables
+- [x] All 150 tests passing
+- [x] No forbidden markers
+
+### Phase 38: Bank Reconciliation Status Report (COMPLETE) - Tag: 0.5.0
+- [x] Reconciliation status aggregate queries in BankFeedItemRepository (spec 05, spec 13)
+  - countByAccountAndStatus() - count feed items by status per account
+  - sumAmountByAccountAndStatus() - sum amounts by status per account
+  - findOldestUnmatchedDateByAccount() - find oldest pending item date
+  - countByCompanyAndStatus() - company-wide count by status
+  - sumAmountByCompanyAndStatus() - company-wide sum by status
+- [x] generateReconciliationStatus() in ReportingService
+  - ReconciliationStatus record with overall summary statistics
+  - ReconciliationAccountSummary record with per-account breakdown
+  - Security-level filtering for bank account visibility
+  - Calculates reconciled percentage per account and overall
+  - Tracks unreconciled amounts and oldest pending dates
+- [x] Reconciliation Status tab in ReportsView (spec 05, spec 13)
+  - New tab with CHECK_CIRCLE icon in Reports view
+  - Summary statistics row showing totals across all accounts
+  - Color-coded status boxes (new=blue, matched/created=green, ignored=gray)
+  - Grid showing per-account reconciliation details
+  - Shows account code, name, counts by status, unreconciled amount, reconciled %
+  - Oldest pending date column for identifying stale items
+- [x] PDF/Excel export for Reconciliation Status report
+  - PDF: Landscape layout with summary table and account details grid
+  - PDF: Color-coded reconciled percentage (green=100%, red=<100%)
+  - Excel: Summary section with totals plus account details sheet
+  - Excel: Percentage formatting for reconciled % column
 - [x] All 150 tests passing
 - [x] No forbidden markers
 
