@@ -66,10 +66,11 @@
 - **Phase 59 Configurable Dashboard Tiles COMPLETE** - Tag: 0.7.1
 - **Phase 60 Audit Event Retention Policy COMPLETE** - Tag: 0.7.2
 - **Phase 61 Follow-up Reminders Dashboard Tile COMPLETE** - Tag: 0.7.3
-- All 255 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 24, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21)
+- **Phase 62 Allocation Rule Counter-Party Matching COMPLETE** - Tag: 0.7.4
+- All 263 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 32, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
-- Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql, V14__statement_runs.sql, V15__additional_permissions.sql, V16__user_security_level.sql, V17__user_invitations.sql, V18__credit_notes.sql, V19__reconciliation_match.sql, V20__ledger_entry_reconciliation.sql, V21__allocation_rule_amount_range.sql, V22__debit_notes.sql, V23__reversal_link.sql, V24__clerk_roles.sql
+- Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql, V14__statement_runs.sql, V15__additional_permissions.sql, V16__user_security_level.sql, V17__user_invitations.sql, V18__credit_notes.sql, V19__reconciliation_match.sql, V20__ledger_entry_reconciliation.sql, V21__allocation_rule_amount_range.sql, V22__debit_notes.sql, V23__reversal_link.sql, V24__clerk_roles.sql, V25__allocation_rule_counter_party.sql
 - All repository interfaces created (42 repositories)
 - Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService, SalesInvoiceService, ReceivableAllocationService, SupplierBillService, PayableAllocationService, PaymentRunService, RemittanceAdviceService, DepartmentService, BudgetService, KPIService, RecurringTemplateService, ReportExportService, GlobalSearchService, SavedViewService, EmailService, InvoicePdfService, StatementService, RoleService, PermissionService, InvitationService, TransactionImportService
 - Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView, AuditEventsView, ContactsView, ProductsView, SalesInvoicesView, SupplierBillsView, DepartmentsView, BudgetsView, KPIsView, RecurringTemplatesView, GlobalSearchView, StatementRunsView, UsersView, AcceptInvitationView, RolesView, CompanySettingsView
@@ -1631,6 +1632,36 @@ Per specs, Release 1 must deliver:
 - [x] All 255 tests passing
 - [x] No forbidden markers
 
+### Phase 62: Allocation Rule Counter-Party Matching (COMPLETE) - Tag: 0.7.4
+- [x] Added counter-party pattern matching to AllocationRule entity (spec 05)
+  - Per spec 05: "rules can match on description, amount ranges, counterparty, etc."
+  - Added counterPartyPattern field (VARCHAR 200) to AllocationRule
+  - Case-insensitive contains matching against payee/vendor name
+  - Created V25__allocation_rule_counter_party.sql migration
+- [x] Updated AllocationRule.matches() method with 3-parameter signature
+  - matches(description, amount, counterParty) for full matching
+  - Maintains backwards compatibility with 1 and 2 parameter versions
+  - All three constraints must match for rule to apply (AND logic)
+- [x] Updated AllocationRulesView UI
+  - Added Counter-Party Pattern field in rule edit form
+  - Added counter-party input in Test Rules dialog
+  - Shows counter-party pattern in test results
+- [x] Updated BankImportService for counter-party matching
+  - Added findMatchingRule(Company, BankFeedItem) overload
+  - Added extractCounterParty() method to parse payee from rawJson
+  - Supports QIF JSON format ({"payee":"..."}) and OFX format (<NAME>...</NAME>)
+- [x] AllocationRuleTest expanded with 8 new counter-party tests
+  - matches_NoCounterPartyConstraint_MatchesAnyCounterParty
+  - matches_CounterPartyConstraint_FiltersNonMatching
+  - matches_CounterPartyWithSpaces_MatchesCorrectly
+  - matches_DescriptionMatchesButCounterPartyDoesNot_ReturnsFalse
+  - matches_CounterPartyMatchesButDescriptionDoesNot_ReturnsFalse
+  - matches_AllThreeCriteriaMatch_ReturnsTrue
+  - matches_CounterPartyWithDescriptionPattern_WorksCorrectly
+  - matches_RealWorldVendorScenario_WorksCorrectly
+- [x] All 263 tests passing (AllocationRuleTest: 32)
+- [x] No forbidden markers
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -1713,6 +1744,7 @@ Per specs, Release 1 must deliver:
 - BillPdfService mirrors InvoicePdfService pattern: same fonts, colors, layout structure, and PdfSettings support for consistent PDF generation across AR and AP documents
 - ReversalLink entity formally tracks reversal relationships between transactions per spec 04 domain model; string-based "REV-" reference tracking in description is kept for backwards compatibility and quick visual identification
 - Dashboard tiles can leverage existing repository methods (e.g., ContactNoteRepository.findDueFollowUpsByCompany()) - check for existing queries before writing new ones; existing domain queries often already support dashboard use cases
+- AllocationRule.matches() now has 3-parameter overload (description, amount, counterParty) for spec 05 counter-party matching; counter-party extracted from BankFeedItem.rawJson via extractCounterParty() supporting QIF JSON and OFX formats
 
 ## Remaining Gaps (From Spec Analysis)
 
@@ -1731,6 +1763,7 @@ Per specs, Release 1 must deliver:
 - Bulk email to contacts - Phase 58
 - Configurable dashboard tiles - Phase 59
 - Audit event retention policy configuration (spec 14) - Phase 60
+- Allocation rule counter-party matching (spec 05) - Phase 62
 
 ## Technical Notes
 - Build: `./mvnw compile`

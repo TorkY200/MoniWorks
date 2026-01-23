@@ -582,16 +582,18 @@ public class BankImportService {
 
   /**
    * Finds allocation rules that match the given description. This is a convenience method that
-   * delegates to {@link #findMatchingRule(Company, String, BigDecimal)} with null amount.
+   * delegates to {@link #findMatchingRule(Company, String, BigDecimal, String)} with null amount
+   * and counterparty.
    */
   @Transactional(readOnly = true)
   public Optional<AllocationRule> findMatchingRule(Company company, String description) {
-    return findMatchingRule(company, description, null);
+    return findMatchingRule(company, description, null, null);
   }
 
   /**
-   * Finds allocation rules that match the given description and amount. Per spec 05: "rules can
-   * match on description, amount ranges, counterparty, etc."
+   * Finds allocation rules that match the given description and amount. This is a convenience
+   * method that delegates to {@link #findMatchingRule(Company, String, BigDecimal, String)} with
+   * null counterparty.
    *
    * @param company The company context
    * @param description The bank feed item description
@@ -602,15 +604,92 @@ public class BankImportService {
   @Transactional(readOnly = true)
   public Optional<AllocationRule> findMatchingRule(
       Company company, String description, BigDecimal amount) {
+    return findMatchingRule(company, description, amount, null);
+  }
+
+  /**
+   * Finds allocation rules that match the given description, amount, and counterparty. Per spec 05:
+   * "rules can match on description, amount ranges, counterparty, etc."
+   *
+   * @param company The company context
+   * @param description The bank feed item description
+   * @param amount The transaction amount (can be positive or negative; absolute value is used for
+   *     matching)
+   * @param counterParty The payee/vendor name (can be null)
+   * @return The first matching rule by priority, or empty if no match
+   */
+  @Transactional(readOnly = true)
+  public Optional<AllocationRule> findMatchingRule(
+      Company company, String description, BigDecimal amount, String counterParty) {
     List<AllocationRule> rules = ruleRepository.findEnabledByCompanyOrderByPriority(company);
 
     for (AllocationRule rule : rules) {
-      if (rule.matches(description, amount)) {
+      if (rule.matches(description, amount, counterParty)) {
         return Optional.of(rule);
       }
     }
 
     return Optional.empty();
+  }
+
+  /**
+   * Finds allocation rules that match a bank feed item. Extracts counterparty from rawJson if
+   * available.
+   *
+   * @param company The company context
+   * @param item The bank feed item to match
+   * @return The first matching rule by priority, or empty if no match
+   */
+  @Transactional(readOnly = true)
+  public Optional<AllocationRule> findMatchingRule(Company company, BankFeedItem item) {
+    String counterParty = extractCounterParty(item);
+    return findMatchingRule(company, item.getDescription(), item.getAmount(), counterParty);
+  }
+
+  /**
+   * Extracts the counter-party (payee/vendor) from a bank feed item's raw JSON. Returns null if not
+   * available.
+   */
+  private String extractCounterParty(BankFeedItem item) {
+    if (item.getRawJson() == null || item.getRawJson().isBlank()) {
+      return null;
+    }
+
+    String rawJson = item.getRawJson();
+
+    // Try to extract payee from JSON format {"payee":"..."}
+    int payeeStart = rawJson.indexOf("\"payee\":\"");
+    if (payeeStart >= 0) {
+      int valueStart = payeeStart + 9;
+      int valueEnd = rawJson.indexOf("\"", valueStart);
+      if (valueEnd > valueStart) {
+        String payee = rawJson.substring(valueStart, valueEnd);
+        if (!payee.isBlank()) {
+          return payee;
+        }
+      }
+    }
+
+    // Try to extract NAME from OFX format <NAME>...</NAME> or <NAME>...\n
+    int nameStart = rawJson.indexOf("<NAME>");
+    if (nameStart >= 0) {
+      int valueStart = nameStart + 6;
+      int valueEnd = rawJson.indexOf("<", valueStart);
+      if (valueEnd < 0) {
+        valueEnd = rawJson.indexOf("\n", valueStart);
+      }
+      if (valueEnd < 0) {
+        valueEnd = rawJson.length();
+      }
+      if (valueEnd > valueStart) {
+        String name = rawJson.substring(valueStart, valueEnd).trim();
+        if (!name.isBlank()) {
+          return name;
+        }
+      }
+    }
+
+    return null;
   }
 
   /**

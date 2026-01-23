@@ -69,6 +69,15 @@ public class AllocationRule {
   @Column(name = "max_amount", precision = 19, scale = 2)
   private BigDecimal maxAmount;
 
+  /**
+   * Counter-party pattern to match against. Per spec 05: "rules can match on description, amount
+   * ranges, counterparty, etc." If null, no counter-party constraint. Uses case-insensitive
+   * contains matching against the bank feed item's name/payee field.
+   */
+  @Size(max = 200)
+  @Column(name = "counter_party_pattern", length = 200)
+  private String counterPartyPattern;
+
   @Column(nullable = false)
   private boolean enabled = true;
 
@@ -181,6 +190,14 @@ public class AllocationRule {
     this.maxAmount = maxAmount;
   }
 
+  public String getCounterPartyPattern() {
+    return counterPartyPattern;
+  }
+
+  public void setCounterPartyPattern(String counterPartyPattern) {
+    this.counterPartyPattern = counterPartyPattern;
+  }
+
   public boolean isEnabled() {
     return enabled;
   }
@@ -199,29 +216,44 @@ public class AllocationRule {
 
   /**
    * Tests if the given description matches this rule's expression. Currently supports simple
-   * CONTAINS matching. Does not check amount constraints - use {@link #matches(String, BigDecimal)}
-   * for full matching including amount range.
+   * CONTAINS matching. Does not check amount or counterparty constraints - use {@link
+   * #matches(String, BigDecimal, String)} for full matching.
    */
   public boolean matches(String description) {
-    return matches(description, null);
+    return matches(description, null, null);
   }
 
   /**
    * Tests if the given description and amount match this rule. Per spec 05: "rules can match on
-   * description, amount ranges, counterparty, etc."
-   *
-   * <p>Supports:
-   *
-   * <ul>
-   *   <li>Description matching via CONTAINS or simple substring
-   *   <li>Amount range matching via minAmount/maxAmount (uses absolute value)
-   * </ul>
+   * description, amount ranges, counterparty, etc." Does not check counterparty - use {@link
+   * #matches(String, BigDecimal, String)} for full matching.
    *
    * @param description The bank feed item description to match against
    * @param amount The transaction amount (can be positive or negative; absolute value is used)
    * @return true if the rule matches both description and amount constraints
    */
   public boolean matches(String description, BigDecimal amount) {
+    return matches(description, amount, null);
+  }
+
+  /**
+   * Tests if the given description, amount, and counterparty match this rule. Per spec 05: "rules
+   * can match on description, amount ranges, counterparty, etc."
+   *
+   * <p>Supports:
+   *
+   * <ul>
+   *   <li>Description matching via CONTAINS or simple substring
+   *   <li>Amount range matching via minAmount/maxAmount (uses absolute value)
+   *   <li>Counter-party matching via case-insensitive contains
+   * </ul>
+   *
+   * @param description The bank feed item description to match against
+   * @param amount The transaction amount (can be positive or negative; absolute value is used)
+   * @param counterParty The counter-party/payee name from the bank feed item (can be null)
+   * @return true if the rule matches all specified constraints
+   */
+  public boolean matches(String description, BigDecimal amount, String counterParty) {
     // First check description match
     if (!matchesDescription(description)) {
       return false;
@@ -229,6 +261,11 @@ public class AllocationRule {
 
     // Then check amount range if specified
     if (!matchesAmount(amount)) {
+      return false;
+    }
+
+    // Finally check counter-party if specified
+    if (!matchesCounterParty(counterParty)) {
       return false;
     }
 
@@ -283,6 +320,28 @@ public class AllocationRule {
     }
 
     return true;
+  }
+
+  /**
+   * Tests if the given counter-party matches this rule's counter-party pattern. Per spec 05: "rules
+   * can match on description, amount ranges, counterparty, etc."
+   *
+   * @param counterParty The counter-party/payee name to check (can be null)
+   * @return true if counter-party matches or no counter-party constraint is set
+   */
+  private boolean matchesCounterParty(String counterParty) {
+    // If no counter-party constraint, always match
+    if (counterPartyPattern == null || counterPartyPattern.isBlank()) {
+      return true;
+    }
+
+    // If counter-party is required but not provided, don't match
+    if (counterParty == null || counterParty.isBlank()) {
+      return false;
+    }
+
+    // Case-insensitive contains matching
+    return counterParty.toLowerCase().contains(counterPartyPattern.toLowerCase().trim());
   }
 
   /**

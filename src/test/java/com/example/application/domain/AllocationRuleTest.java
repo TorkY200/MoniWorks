@@ -220,6 +220,58 @@ class AllocationRuleTest {
     assertEquals("Amount: ", result);
   }
 
+  // ==================== Counter-Party Matching Tests ====================
+
+  @Test
+  void matches_NoCounterPartyConstraint_MatchesAnyCounterParty() {
+    rule.setMatchExpression("Payment");
+    rule.setCounterPartyPattern(null);
+
+    assertTrue(rule.matches("Payment received", null, "ACME Corp"));
+    assertTrue(rule.matches("Payment received", null, "XYZ Inc"));
+    assertTrue(rule.matches("Payment received", null, null));
+  }
+
+  @Test
+  void matches_CounterPartyConstraint_FiltersNonMatching() {
+    rule.setMatchExpression("Payment");
+    rule.setCounterPartyPattern("ACME");
+
+    assertTrue(rule.matches("Payment received", null, "ACME Corp"));
+    assertTrue(rule.matches("Payment received", null, "acme inc")); // case insensitive
+    assertFalse(rule.matches("Payment received", null, "XYZ Inc"));
+    assertFalse(rule.matches("Payment received", null, null)); // required but not provided
+    assertFalse(rule.matches("Payment received", null, "")); // required but blank
+  }
+
+  @Test
+  void matches_CounterPartyWithSpaces_MatchesCorrectly() {
+    rule.setMatchExpression("Bill");
+    rule.setCounterPartyPattern("Electric Company");
+
+    assertTrue(rule.matches("Electric Bill", null, "City Electric Company"));
+    assertTrue(rule.matches("Electric Bill", null, "ELECTRIC COMPANY"));
+    assertFalse(rule.matches("Electric Bill", null, "Gas Company"));
+  }
+
+  @Test
+  void matches_DescriptionMatchesButCounterPartyDoesNot_ReturnsFalse() {
+    rule.setMatchExpression("Payment");
+    rule.setCounterPartyPattern("ACME");
+
+    // Description matches but counter-party doesn't
+    assertFalse(rule.matches("Payment received", null, "XYZ Corp"));
+  }
+
+  @Test
+  void matches_CounterPartyMatchesButDescriptionDoesNot_ReturnsFalse() {
+    rule.setMatchExpression("Invoice");
+    rule.setCounterPartyPattern("ACME");
+
+    // Counter-party matches but description doesn't
+    assertFalse(rule.matches("Payment received", null, "ACME Corp"));
+  }
+
   // ==================== Combined Matching Tests ====================
 
   @Test
@@ -230,6 +282,23 @@ class AllocationRuleTest {
 
     // All criteria match
     assertTrue(rule.matches("Electric Company Bill", new BigDecimal("150.00")));
+  }
+
+  @Test
+  void matches_AllThreeCriteriaMatch_ReturnsTrue() {
+    rule.setMatchExpression("Electric");
+    rule.setMinAmount(new BigDecimal("50.00"));
+    rule.setMaxAmount(new BigDecimal("200.00"));
+    rule.setCounterPartyPattern("Power Co");
+
+    // All three criteria match
+    assertTrue(rule.matches("Electric Bill", new BigDecimal("150.00"), "City Power Co"));
+
+    // Description and amount match, but counter-party doesn't
+    assertFalse(rule.matches("Electric Bill", new BigDecimal("150.00"), "Gas Company"));
+
+    // Description and counter-party match, but amount doesn't
+    assertFalse(rule.matches("Electric Bill", new BigDecimal("300.00"), "City Power Co"));
   }
 
   @Test
@@ -251,5 +320,43 @@ class AllocationRuleTest {
     // Verify memo template
     String memo = rule.applyMemoTemplate("STAPLES #1234", new BigDecimal("-45.99"));
     assertEquals("Office Supplies: STAPLES #1234", memo);
+  }
+
+  @Test
+  void matches_CounterPartyWithDescriptionPattern_WorksCorrectly() {
+    // Scenario: Rule that matches by description AND counter-party
+    rule.setRuleName("ACME Payments");
+    rule.setMatchExpression("Payment");
+    rule.setCounterPartyPattern("ACME");
+
+    // Both must match
+    assertTrue(rule.matches("Payment from ACME", null, "ACME Corp"));
+    assertTrue(rule.matches("ACME Invoice Payment", null, "ACME Corporation"));
+
+    // Counter-party doesn't match
+    assertFalse(rule.matches("Payment from ACME", null, "XYZ Corp"));
+
+    // Description doesn't match
+    assertFalse(rule.matches("ACME Invoice", null, "ACME Corp"));
+  }
+
+  @Test
+  void matches_RealWorldVendorScenario_WorksCorrectly() {
+    // Scenario: Match specific vendor with amount ranges
+    rule.setRuleName("AWS Monthly < $500");
+    rule.setMatchExpression("AWS");
+    rule.setCounterPartyPattern("Amazon Web Services");
+    rule.setMinAmount(null);
+    rule.setMaxAmount(new BigDecimal("500.00"));
+
+    // Should match small AWS bills
+    assertTrue(rule.matches("AWS Monthly Bill", new BigDecimal("-150.00"), "Amazon Web Services"));
+
+    // Should NOT match large AWS bills (needs different account perhaps)
+    assertFalse(
+        rule.matches("AWS Monthly Bill", new BigDecimal("-1500.00"), "Amazon Web Services"));
+
+    // Should NOT match other Amazon purchases
+    assertFalse(rule.matches("AWS Monthly Bill", new BigDecimal("-150.00"), "Amazon.com"));
   }
 }

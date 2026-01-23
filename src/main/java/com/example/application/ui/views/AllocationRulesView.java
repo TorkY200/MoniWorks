@@ -63,6 +63,7 @@ public class AllocationRulesView extends VerticalLayout {
   // Detail form fields
   private TextField ruleNameField;
   private TextArea matchExpressionField;
+  private TextField counterPartyPatternField;
   private ComboBox<Account> targetAccountCombo;
   private ComboBox<TaxCode> targetTaxCodeCombo;
   private IntegerField priorityField;
@@ -240,6 +241,13 @@ public class AllocationRulesView extends VerticalLayout {
             + "Use 'CONTAINS text' for explicit contains matching.");
     matchExpressionField.setPlaceholder("e.g., ELECTRICITY or CONTAINS 'power company'");
 
+    counterPartyPatternField = new TextField("Counter-Party Pattern (Optional)");
+    counterPartyPatternField.setMaxLength(200);
+    counterPartyPatternField.setHelperText(
+        "Optional payee/vendor name to match. Case-insensitive contains matching.");
+    counterPartyPatternField.setPlaceholder("e.g., ACME Corp, Electric Company");
+    counterPartyPatternField.setClearButtonVisible(true);
+
     Company company = companyContextService.getCurrentCompany();
 
     targetAccountCombo = new ComboBox<>("Target Account");
@@ -286,6 +294,7 @@ public class AllocationRulesView extends VerticalLayout {
 
     formLayout.add(ruleNameField, priorityField);
     formLayout.add(matchExpressionField, 2);
+    formLayout.add(counterPartyPatternField, 2);
     formLayout.add(targetAccountCombo, targetTaxCodeCombo);
     formLayout.add(minAmountField, maxAmountField);
     formLayout.add(memoTemplateField, enabledCheckbox);
@@ -319,6 +328,10 @@ public class AllocationRulesView extends VerticalLayout {
         .forField(matchExpressionField)
         .asRequired("Match expression is required")
         .bind(AllocationRule::getMatchExpression, AllocationRule::setMatchExpression);
+
+    binder
+        .forField(counterPartyPatternField)
+        .bind(AllocationRule::getCounterPartyPattern, AllocationRule::setCounterPartyPattern);
 
     binder
         .forField(targetAccountCombo)
@@ -485,6 +498,11 @@ public class AllocationRulesView extends VerticalLayout {
     testAmount.setPlaceholder("Enter an amount to test amount range rules");
     testAmount.setClearButtonVisible(true);
 
+    TextField testCounterParty = new TextField("Test Counter-Party (Optional)");
+    testCounterParty.setWidthFull();
+    testCounterParty.setPlaceholder("Enter a payee/vendor name to test counter-party rules");
+    testCounterParty.setClearButtonVisible(true);
+
     VerticalLayout resultLayout = new VerticalLayout();
     resultLayout.setPadding(false);
     resultLayout.setSpacing(true);
@@ -505,10 +523,16 @@ public class AllocationRulesView extends VerticalLayout {
           List<AllocationRule> rules =
               allocationRuleRepository.findEnabledByCompanyOrderByPriority(company);
 
+          String counterPartyValue = testCounterParty.getValue();
+          String counterParty =
+              (counterPartyValue != null && !counterPartyValue.isBlank())
+                  ? counterPartyValue
+                  : null;
+
           boolean foundMatch = false;
           for (AllocationRule rule : rules) {
-            // Test with both description and amount
-            if (rule.matches(description, testAmount.getValue())) {
+            // Test with description, amount, and counter-party
+            if (rule.matches(description, testAmount.getValue(), counterParty)) {
               StringBuilder matchInfo = new StringBuilder();
               matchInfo
                   .append("Match found: ")
@@ -519,7 +543,7 @@ public class AllocationRulesView extends VerticalLayout {
                 matchInfo.append(", Tax: ").append(rule.getTargetTaxCode());
               }
               if (rule.getMinAmount() != null || rule.getMaxAmount() != null) {
-                matchInfo.append(" (Amount range: ");
+                matchInfo.append(" (Amount: ");
                 if (rule.getMinAmount() != null) {
                   matchInfo.append("≥").append(rule.getMinAmount().toPlainString());
                 }
@@ -530,6 +554,13 @@ public class AllocationRulesView extends VerticalLayout {
                   matchInfo.append("≤").append(rule.getMaxAmount().toPlainString());
                 }
                 matchInfo.append(")");
+              }
+              if (rule.getCounterPartyPattern() != null
+                  && !rule.getCounterPartyPattern().isBlank()) {
+                matchInfo
+                    .append(" (Counter-party: ")
+                    .append(rule.getCounterPartyPattern())
+                    .append(")");
               }
 
               Span matchResult = new Span(matchInfo.toString());
@@ -544,7 +575,8 @@ public class AllocationRulesView extends VerticalLayout {
           }
 
           if (!foundMatch) {
-            Span noMatch = new Span("No matching rule found for this description and amount.");
+            Span noMatch =
+                new Span("No matching rule found for this description, amount, and counter-party.");
             noMatch.getStyle().set("color", "var(--lumo-secondary-text-color)");
             resultLayout.add(noMatch);
           }
@@ -552,7 +584,7 @@ public class AllocationRulesView extends VerticalLayout {
 
     Paragraph helpText =
         new Paragraph(
-            "Enter a sample transaction description and optional amount to test rule matching. "
+            "Enter a sample transaction description and optional amount/counter-party to test rule matching. "
                 + "Rules are tested in priority order (highest first). "
                 + "Amount rules check the absolute value of the transaction.");
     helpText
@@ -561,7 +593,8 @@ public class AllocationRulesView extends VerticalLayout {
         .set("font-size", "var(--lumo-font-size-s)");
 
     VerticalLayout content =
-        new VerticalLayout(testInput, testAmount, testBtn, resultLayout, helpText);
+        new VerticalLayout(
+            testInput, testAmount, testCounterParty, testBtn, resultLayout, helpText);
     content.setPadding(false);
     content.setSpacing(true);
 
