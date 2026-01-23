@@ -53,6 +53,7 @@
 - **Phase 46 Debit Notes for Supplier Bills COMPLETE** - Tag: 0.5.8
 - **Phase 47 Transaction CSV Import COMPLETE** - Tag: 0.5.9
 - **Phase 48 Email Statements to Customers COMPLETE** - Tag: 0.6.0
+- **Phase 49 Supplier Bill PDF Export COMPLETE** - Tag: 0.6.1
 - All 255 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 24, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
@@ -1359,6 +1360,25 @@ Per specs, Release 1 must deliver:
 - [x] All 255 tests passing
 - [x] No forbidden markers
 
+### Phase 49: Supplier Bill PDF Export (COMPLETE) - Tag: 0.6.1
+- [x] BillPdfService for generating supplier bill PDFs (spec 10, spec 13)
+  - Professional bill summary documents with company branding
+  - Supports both standard bills and debit notes
+  - Line items table with description, quantity, unit price, tax, amount
+  - Tax breakdown by tax code in totals section
+  - Payment status section (PAID stamp, or payment due/overdue status)
+  - Notes section and customizable footer
+  - Uses PdfSettings for logo, colors, company details (same as invoices)
+  - Paper size options: A4, Letter, Legal
+- [x] PDF export button in SupplierBillsView (spec 10)
+  - "Export PDF" button appears for all posted bills
+  - Works for regular bills and debit notes
+  - Uses company's PDF settings for consistent branding
+  - Downloads PDF directly to browser
+- [x] Added BillPdfService and CompanyService dependencies to SupplierBillsView
+- [x] All 255 tests passing
+- [x] No forbidden markers
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -1438,6 +1458,7 @@ Per specs, Release 1 must deliver:
 - Debit notes for supplier bills mirror credit notes for invoices: BillType.DEBIT_NOTE uses DN- prefix, originalBill reference, reversed journal entries (DR AP, CR Expense, CR GST Paid)
 - Transaction CSV import groups lines by date + type + description + reference combination; each unique combo becomes one transaction. Validates balanced entries (debits = credits) before creating transactions.
 - StatementRunService.previewCustomers() can be reused for email dialog to get list of customers matching run criteria; parseCriteriaFromRun() pattern parses JSON back to StatementCriteria for completed runs
+- BillPdfService mirrors InvoicePdfService pattern: same fonts, colors, layout structure, and PdfSettings support for consistent PDF generation across AR and AP documents
 
 ## Technical Notes
 - Build: `./mvnw compile`

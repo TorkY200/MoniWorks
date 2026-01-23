@@ -1,5 +1,6 @@
 package com.example.application.ui.views;
 
+import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -19,6 +20,7 @@ import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
+import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Span;
@@ -37,6 +39,7 @@ import com.vaadin.flow.router.BeforeEnterObserver;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.QueryParameters;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.StreamResource;
 
 import jakarta.annotation.security.PermitAll;
 
@@ -60,6 +63,8 @@ public class SupplierBillsView extends VerticalLayout implements BeforeEnterObse
   private final CompanyContextService companyContextService;
   private final PayableAllocationService payableAllocationService;
   private final SavedViewService savedViewService;
+  private final BillPdfService billPdfService;
+  private final CompanyService companyService;
 
   private final Grid<SupplierBill> grid = new Grid<>();
   private final TextField searchField = new TextField();
@@ -80,7 +85,9 @@ public class SupplierBillsView extends VerticalLayout implements BeforeEnterObse
       TaxCodeService taxCodeService,
       CompanyContextService companyContextService,
       PayableAllocationService payableAllocationService,
-      SavedViewService savedViewService) {
+      SavedViewService savedViewService,
+      BillPdfService billPdfService,
+      CompanyService companyService) {
     this.billService = billService;
     this.contactService = contactService;
     this.accountService = accountService;
@@ -89,6 +96,8 @@ public class SupplierBillsView extends VerticalLayout implements BeforeEnterObse
     this.companyContextService = companyContextService;
     this.payableAllocationService = payableAllocationService;
     this.savedViewService = savedViewService;
+    this.billPdfService = billPdfService;
+    this.companyService = companyService;
 
     addClassName("bills-view");
     setSizeFull();
@@ -390,6 +399,14 @@ public class SupplierBillsView extends VerticalLayout implements BeforeEnterObse
         voidButton.addClickListener(e -> confirmVoidBill(bill));
       }
       actions.add(voidButton);
+    }
+
+    // PDF export for posted bills (including paid and debit notes)
+    if (bill.isPosted()) {
+      Button exportPdfButton = new Button("Export PDF", VaadinIcon.DOWNLOAD.create());
+      exportPdfButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+      exportPdfButton.addClickListener(e -> exportBillPdf(bill));
+      actions.add(exportPdfButton);
     }
 
     HorizontalLayout spacer = new HorizontalLayout();
@@ -1183,5 +1200,35 @@ public class SupplierBillsView extends VerticalLayout implements BeforeEnterObse
         });
 
     confirm.open();
+  }
+
+  private void exportBillPdf(SupplierBill bill) {
+    try {
+      Company company = companyContextService.getCurrentCompany();
+      PdfSettings pdfSettings = companyService.getPdfSettings(company);
+
+      byte[] pdfContent = billPdfService.generateBillPdf(bill, pdfSettings);
+
+      String filename =
+          bill.isDebitNote()
+              ? "DebitNote_" + bill.getBillNumber() + ".pdf"
+              : "Bill_" + bill.getBillNumber() + ".pdf";
+
+      StreamResource resource =
+          new StreamResource(filename, () -> new ByteArrayInputStream(pdfContent));
+      resource.setContentType("application/pdf");
+
+      Anchor downloadLink = new Anchor(resource, "");
+      downloadLink.getElement().setAttribute("download", true);
+      downloadLink.getElement().getStyle().set("display", "none");
+      add(downloadLink);
+      downloadLink.getElement().executeJs("this.click()");
+      downloadLink.getElement().executeJs("setTimeout(() => this.remove(), 100)");
+
+    } catch (Exception e) {
+      Notification.show(
+              "Error generating PDF: " + e.getMessage(), 5000, Notification.Position.MIDDLE)
+          .addThemeVariants(NotificationVariant.LUMO_ERROR);
+    }
   }
 }
