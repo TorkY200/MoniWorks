@@ -34,6 +34,7 @@
 - **Phase 26 Role Management UI COMPLETE** - Tag: 0.3.8
 - **Phase 27 PDF Template Customization COMPLETE** - Tag: 0.3.9
 - **Phase 28 Security Level UI Enforcement COMPLETE** - Tag: 0.4.0
+- **Phase 29 Bank Register Report COMPLETE** - Tag: 0.4.1
 - All 150 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, InvitationServiceTest: 18, SalesInvoiceServiceTest: 11, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ApplicationTest: 1)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation
 - Database configured: H2 for development, PostgreSQL for production
@@ -846,6 +847,35 @@ Per specs, Release 1 must deliver:
 - [x] All 150 tests passing
 - [x] No forbidden markers (TODO/FIXME/etc)
 
+
+### Phase 29: Bank Register Report (COMPLETE) - Tag: 0.4.1
+- [x] Bank Register report in ReportingService (spec 13)
+  - BankRegister record with bankAccount, dates, openingBalance, closingBalance, totalDebits, totalCredits
+  - BankRegisterLine record with date, reference, description, transactionType, debit, credit, runningBalance, transactionId
+  - generateBankRegister() method with security level filtering
+  - Calculates opening balance (day before start) and running balance through each transaction
+  - isReconciled() verification (opening + debits - credits = closing)
+  - netChange() calculation for period
+- [x] Bank Register PDF export (spec 13)
+  - Landscape A4 format for more columns
+  - Company header with account info and date range
+  - Reconciliation status indicator
+  - Transaction table with debit/credit/running balance columns
+  - Summary section with opening, total debits, total credits, net change, closing
+  - Color coding for amounts (green for debits/deposits, red for credits/withdrawals)
+- [x] Bank Register Excel export (spec 13)
+  - Full formatting with headers, data rows, totals
+  - Account info and period information
+  - Currency formatting for all amounts
+- [x] Bank Register tab in ReportsView (spec 13)
+  - Bank account selector (security level filtered)
+  - Date range pickers with current month defaults
+  - Generate Report button
+  - Transactions grid with drilldown to transaction ID
+  - Opening and closing balance displays
+  - PDF/Excel export buttons
+- [x] All 150 tests passing
+- [x] No forbidden markers
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -902,6 +932,8 @@ Per specs, Release 1 must deliver:
 - LogoutHandler interface allows audit logging before session is destroyed during logout
 - Account security level filtering must be applied in ALL views that display account selectors - use companyContextService.getCurrentSecurityLevel() and the WithSecurityLevel service methods
 - UserSecurityLevelRepository can be injected directly into views for simple CRUD operations without needing a dedicated service
+- Bank Register report is separate from Cashflow report - Cashflow aggregates all bank accounts, Bank Register shows transaction-level detail per account with running balance
+- ReportsView tabs pattern: create tab layout method returning VerticalLayout, create load method, create display method, create update export buttons method
 
 ## Technical Notes
 - Build: `./mvnw compile`

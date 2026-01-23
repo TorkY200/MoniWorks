@@ -887,4 +887,135 @@ public class ReportingService {
     public enum CashflowDirection {
         INFLOW, OUTFLOW
     }
+
+    // ==================== BANK REGISTER REPORT ====================
+
+    /**
+     * Generates a Bank Register report for a specific bank account.
+     * Shows a chronological list of all transactions affecting the bank account
+     * with running balance.
+     *
+     * This report is essential for reconciling bank statements and auditing
+     * cash movements through a specific bank account.
+     */
+    public BankRegister generateBankRegister(Company company, Account bankAccount,
+                                              LocalDate startDate, LocalDate endDate) {
+        return generateBankRegister(company, bankAccount, startDate, endDate, Integer.MAX_VALUE);
+    }
+
+    /**
+     * Generates a Bank Register report with security level filtering.
+     *
+     * @param company the company
+     * @param bankAccount the bank account to report on
+     * @param startDate start of reporting period
+     * @param endDate end of reporting period
+     * @param maxSecurityLevel the user's maximum security level
+     * @return the bank register with transaction details and running balance
+     */
+    public BankRegister generateBankRegister(Company company, Account bankAccount,
+                                              LocalDate startDate, LocalDate endDate,
+                                              int maxSecurityLevel) {
+        // Verify the user has access to view this bank account
+        if (bankAccount.getSecurityLevel() != null && bankAccount.getSecurityLevel() > maxSecurityLevel) {
+            throw new IllegalArgumentException("Access denied: insufficient security level to view this bank account");
+        }
+
+        // Calculate opening balance (as of day before start date)
+        LocalDate dayBeforeStart = startDate.minusDays(1);
+        BigDecimal openingBalance = ledgerEntryRepository.getBalanceByAccountAsOf(bankAccount, dayBeforeStart);
+        if (openingBalance == null) openingBalance = BigDecimal.ZERO;
+
+        // Get all ledger entries for this bank account in the date range
+        List<LedgerEntry> entries = ledgerEntryRepository.findByAccountAndDateRange(bankAccount, startDate, endDate);
+
+        // Build register lines with running balance
+        List<BankRegisterLine> lines = new ArrayList<>();
+        BigDecimal runningBalance = openingBalance;
+
+        for (LedgerEntry entry : entries) {
+            BigDecimal debit = entry.getAmountDr() != null ? entry.getAmountDr() : BigDecimal.ZERO;
+            BigDecimal credit = entry.getAmountCr() != null ? entry.getAmountCr() : BigDecimal.ZERO;
+
+            // For bank accounts (assets), debits increase balance, credits decrease
+            runningBalance = runningBalance.add(debit).subtract(credit);
+
+            String reference = entry.getTransaction() != null ? entry.getTransaction().getReference() : "";
+            String description = entry.getTransaction() != null ? entry.getTransaction().getDescription() : "";
+            String transactionType = entry.getTransaction() != null ? entry.getTransaction().getType().name() : "";
+
+            lines.add(new BankRegisterLine(
+                entry.getEntryDate(),
+                reference,
+                description,
+                transactionType,
+                debit.compareTo(BigDecimal.ZERO) > 0 ? debit : null,
+                credit.compareTo(BigDecimal.ZERO) > 0 ? credit : null,
+                runningBalance,
+                entry.getTransaction() != null ? entry.getTransaction().getId() : null
+            ));
+        }
+
+        // Calculate closing balance
+        BigDecimal closingBalance = ledgerEntryRepository.getBalanceByAccountAsOf(bankAccount, endDate);
+        if (closingBalance == null) closingBalance = BigDecimal.ZERO;
+
+        // Calculate totals
+        BigDecimal totalDebits = entries.stream()
+            .map(e -> e.getAmountDr() != null ? e.getAmountDr() : BigDecimal.ZERO)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalCredits = entries.stream()
+            .map(e -> e.getAmountCr() != null ? e.getAmountCr() : BigDecimal.ZERO)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return new BankRegister(
+            bankAccount,
+            startDate,
+            endDate,
+            openingBalance,
+            closingBalance,
+            totalDebits,
+            totalCredits,
+            lines
+        );
+    }
+
+    // Bank Register Report records
+    public record BankRegister(
+        Account bankAccount,
+        LocalDate startDate,
+        LocalDate endDate,
+        BigDecimal openingBalance,
+        BigDecimal closingBalance,
+        BigDecimal totalDebits,
+        BigDecimal totalCredits,
+        List<BankRegisterLine> lines
+    ) {
+        /**
+         * Verifies that opening + debits - credits = closing.
+         * This should always be true for a correctly generated report.
+         */
+        public boolean isReconciled() {
+            BigDecimal expected = openingBalance.add(totalDebits).subtract(totalCredits);
+            return expected.compareTo(closingBalance) == 0;
+        }
+
+        /**
+         * Returns the net change in the account during the period.
+         */
+        public BigDecimal netChange() {
+            return totalDebits.subtract(totalCredits);
+        }
+    }
+
+    public record BankRegisterLine(
+        LocalDate date,
+        String reference,
+        String description,
+        String transactionType,
+        BigDecimal debit,
+        BigDecimal credit,
+        BigDecimal runningBalance,
+        Long transactionId
+    ) {}
 }

@@ -1737,4 +1737,297 @@ public class ReportExportService {
         amountCell.setCellValue(amount.doubleValue());
         amountCell.setCellStyle(currencyStyle);
     }
+
+    // ==================== BANK REGISTER EXPORTS ====================
+
+    /**
+     * Exports Bank Register report to PDF format.
+     * Shows a chronological list of transactions with running balance for a bank account.
+     *
+     * This report provides an audit trail of all cash movements through a specific
+     * bank account, essential for bank reconciliation and financial audits.
+     */
+    public byte[] exportBankRegisterToPdf(ReportingService.BankRegister report, Company company) {
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            Document document = new Document(PageSize.A4.rotate()); // Landscape for more columns
+            PdfWriter.getInstance(document, baos);
+            document.open();
+
+            // Title
+            addReportTitle(document, company, "Bank Register");
+            addReportSubtitle(document, "Account: " + report.bankAccount().getCode() + " - " +
+                report.bankAccount().getName());
+            addReportSubtitle(document, "Period: " + report.startDate().format(dateFormatter) +
+                " to " + report.endDate().format(dateFormatter));
+
+            // Reconciliation status
+            String reconcileStatus = report.isReconciled() ? "RECONCILED" : "UNRECONCILED";
+            Paragraph status = new Paragraph(reconcileStatus,
+                new Font(Font.HELVETICA, 10, Font.BOLD,
+                    report.isReconciled() ? PROFIT_COLOR : LOSS_COLOR));
+            status.setAlignment(Element.ALIGN_CENTER);
+            status.setSpacingAfter(10);
+            document.add(status);
+
+            // Opening balance
+            Paragraph openingBal = new Paragraph("Opening Balance: " + formatCurrency(report.openingBalance()),
+                TABLE_CELL_BOLD);
+            openingBal.setSpacingAfter(10);
+            document.add(openingBal);
+
+            // Transaction table
+            PdfPTable table = new PdfPTable(6);
+            table.setWidthPercentage(100);
+            table.setWidths(new float[]{1.5f, 1.5f, 3f, 1.5f, 1.5f, 2f});
+
+            addTableHeader(table, "Date");
+            addTableHeader(table, "Reference");
+            addTableHeader(table, "Description");
+            addTableHeader(table, "Debit");
+            addTableHeader(table, "Credit");
+            addTableHeader(table, "Balance");
+
+            boolean alternate = false;
+            for (ReportingService.BankRegisterLine line : report.lines()) {
+                Color bg = alternate ? ALT_ROW_BG : Color.WHITE;
+                addTableCell(table, line.date().format(dateFormatter), bg, Element.ALIGN_LEFT);
+                addTableCell(table, line.reference() != null ? line.reference() : "", bg, Element.ALIGN_LEFT);
+                addTableCell(table, line.description() != null ? line.description() : "", bg, Element.ALIGN_LEFT);
+                addBankRegisterAmountCell(table, line.debit(), bg, true);
+                addBankRegisterAmountCell(table, line.credit(), bg, false);
+                addTableCell(table, formatCurrency(line.runningBalance()), bg, Element.ALIGN_RIGHT);
+                alternate = !alternate;
+            }
+
+            // Totals row
+            addTotalCell(table, "");
+            addTotalCell(table, "");
+            addTotalCell(table, "Totals");
+            addTotalCell(table, formatCurrency(report.totalDebits()));
+            addTotalCell(table, formatCurrency(report.totalCredits()));
+            addTotalCell(table, formatCurrency(report.closingBalance()));
+
+            document.add(table);
+
+            // Summary section
+            document.add(Chunk.NEWLINE);
+            PdfPTable summaryTable = new PdfPTable(2);
+            summaryTable.setWidthPercentage(40);
+            summaryTable.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            summaryTable.setWidths(new float[]{2f, 1.5f});
+
+            addBankRegisterSummaryRow(summaryTable, "Opening Balance", report.openingBalance());
+            addBankRegisterSummaryRow(summaryTable, "Total Debits (Deposits)", report.totalDebits());
+            addBankRegisterSummaryRow(summaryTable, "Total Credits (Withdrawals)", report.totalCredits());
+            addBankRegisterSummaryRow(summaryTable, "Net Change", report.netChange());
+
+            // Closing balance with emphasis
+            PdfPCell closingLabel = new PdfPCell(new Phrase("Closing Balance", TABLE_CELL_BOLD));
+            closingLabel.setBorder(Rectangle.TOP);
+            closingLabel.setBorderWidth(2);
+            closingLabel.setPadding(8);
+            closingLabel.setBackgroundColor(TOTAL_BG);
+            summaryTable.addCell(closingLabel);
+
+            PdfPCell closingAmount = new PdfPCell(new Phrase(formatCurrency(report.closingBalance()), TABLE_CELL_BOLD));
+            closingAmount.setBorder(Rectangle.TOP);
+            closingAmount.setBorderWidth(2);
+            closingAmount.setPadding(8);
+            closingAmount.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            closingAmount.setBackgroundColor(TOTAL_BG);
+            summaryTable.addCell(closingAmount);
+
+            document.add(summaryTable);
+
+            addReportFooter(document);
+            document.close();
+
+            log.info("Generated Bank Register PDF ({} bytes)", baos.size());
+            return baos.toByteArray();
+
+        } catch (Exception e) {
+            log.error("Failed to generate Bank Register PDF", e);
+            throw new RuntimeException("Failed to generate Bank Register PDF: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Exports Bank Register report to Excel format.
+     */
+    public byte[] exportBankRegisterToExcel(ReportingService.BankRegister report, Company company) {
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+
+            Sheet sheet = workbook.createSheet("Bank Register");
+            int rowNum = 0;
+
+            CellStyle headerStyle = createHeaderStyle(workbook);
+            CellStyle currencyStyle = createCurrencyStyle(workbook);
+            CellStyle titleStyle = createTitleStyle(workbook);
+            CellStyle totalStyle = createTotalStyle(workbook);
+
+            // Title
+            org.apache.poi.ss.usermodel.Row titleRow = sheet.createRow(rowNum++);
+            org.apache.poi.ss.usermodel.Cell titleCell = titleRow.createCell(0);
+            titleCell.setCellValue(company.getName() + " - Bank Register");
+            titleCell.setCellStyle(titleStyle);
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 5));
+
+            // Account info
+            org.apache.poi.ss.usermodel.Row accountRow = sheet.createRow(rowNum++);
+            accountRow.createCell(0).setCellValue("Account: " + report.bankAccount().getCode() + " - " +
+                report.bankAccount().getName());
+
+            // Period
+            org.apache.poi.ss.usermodel.Row dateRow = sheet.createRow(rowNum++);
+            dateRow.createCell(0).setCellValue("Period: " + report.startDate().format(dateFormatter) +
+                " to " + report.endDate().format(dateFormatter));
+
+            // Status
+            org.apache.poi.ss.usermodel.Row statusRow = sheet.createRow(rowNum++);
+            statusRow.createCell(0).setCellValue(report.isReconciled() ? "RECONCILED" : "UNRECONCILED");
+
+            // Opening balance
+            org.apache.poi.ss.usermodel.Row openingRow = sheet.createRow(rowNum++);
+            openingRow.createCell(0).setCellValue("Opening Balance");
+            org.apache.poi.ss.usermodel.Cell openingCell = openingRow.createCell(5);
+            openingCell.setCellValue(report.openingBalance().doubleValue());
+            openingCell.setCellStyle(currencyStyle);
+
+            rowNum++; // Empty row
+
+            // Header row
+            org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(rowNum++);
+            String[] headers = {"Date", "Reference", "Description", "Debit", "Credit", "Balance"};
+            for (int i = 0; i < headers.length; i++) {
+                org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // Data rows
+            for (ReportingService.BankRegisterLine line : report.lines()) {
+                org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(line.date().format(dateFormatter));
+                row.createCell(1).setCellValue(line.reference() != null ? line.reference() : "");
+                row.createCell(2).setCellValue(line.description() != null ? line.description() : "");
+
+                if (line.debit() != null && line.debit().compareTo(BigDecimal.ZERO) > 0) {
+                    org.apache.poi.ss.usermodel.Cell debitCell = row.createCell(3);
+                    debitCell.setCellValue(line.debit().doubleValue());
+                    debitCell.setCellStyle(currencyStyle);
+                } else {
+                    row.createCell(3).setCellValue("");
+                }
+
+                if (line.credit() != null && line.credit().compareTo(BigDecimal.ZERO) > 0) {
+                    org.apache.poi.ss.usermodel.Cell creditCell = row.createCell(4);
+                    creditCell.setCellValue(line.credit().doubleValue());
+                    creditCell.setCellStyle(currencyStyle);
+                } else {
+                    row.createCell(4).setCellValue("");
+                }
+
+                org.apache.poi.ss.usermodel.Cell balanceCell = row.createCell(5);
+                balanceCell.setCellValue(line.runningBalance().doubleValue());
+                balanceCell.setCellStyle(currencyStyle);
+            }
+
+            // Totals row
+            org.apache.poi.ss.usermodel.Row totalsRow = sheet.createRow(rowNum++);
+            totalsRow.createCell(0);
+            totalsRow.createCell(1);
+            org.apache.poi.ss.usermodel.Cell totalLabel = totalsRow.createCell(2);
+            totalLabel.setCellValue("Totals");
+            totalLabel.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell totalDebits = totalsRow.createCell(3);
+            totalDebits.setCellValue(report.totalDebits().doubleValue());
+            totalDebits.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell totalCredits = totalsRow.createCell(4);
+            totalCredits.setCellValue(report.totalCredits().doubleValue());
+            totalCredits.setCellStyle(totalStyle);
+
+            org.apache.poi.ss.usermodel.Cell closingBalance = totalsRow.createCell(5);
+            closingBalance.setCellValue(report.closingBalance().doubleValue());
+            closingBalance.setCellStyle(totalStyle);
+
+            rowNum++; // Empty row
+
+            // Summary section
+            org.apache.poi.ss.usermodel.Row summaryOpeningRow = sheet.createRow(rowNum++);
+            summaryOpeningRow.createCell(4).setCellValue("Opening Balance");
+            org.apache.poi.ss.usermodel.Cell summaryOpeningCell = summaryOpeningRow.createCell(5);
+            summaryOpeningCell.setCellValue(report.openingBalance().doubleValue());
+            summaryOpeningCell.setCellStyle(currencyStyle);
+
+            org.apache.poi.ss.usermodel.Row summaryDebitsRow = sheet.createRow(rowNum++);
+            summaryDebitsRow.createCell(4).setCellValue("Total Debits");
+            org.apache.poi.ss.usermodel.Cell summaryDebitsCell = summaryDebitsRow.createCell(5);
+            summaryDebitsCell.setCellValue(report.totalDebits().doubleValue());
+            summaryDebitsCell.setCellStyle(currencyStyle);
+
+            org.apache.poi.ss.usermodel.Row summaryCreditsRow = sheet.createRow(rowNum++);
+            summaryCreditsRow.createCell(4).setCellValue("Total Credits");
+            org.apache.poi.ss.usermodel.Cell summaryCreditsCell = summaryCreditsRow.createCell(5);
+            summaryCreditsCell.setCellValue(report.totalCredits().doubleValue());
+            summaryCreditsCell.setCellStyle(currencyStyle);
+
+            org.apache.poi.ss.usermodel.Row summaryNetRow = sheet.createRow(rowNum++);
+            summaryNetRow.createCell(4).setCellValue("Net Change");
+            org.apache.poi.ss.usermodel.Cell summaryNetCell = summaryNetRow.createCell(5);
+            summaryNetCell.setCellValue(report.netChange().doubleValue());
+            summaryNetCell.setCellStyle(currencyStyle);
+
+            org.apache.poi.ss.usermodel.Row summaryClosingRow = sheet.createRow(rowNum);
+            org.apache.poi.ss.usermodel.Cell closingLabelCell = summaryClosingRow.createCell(4);
+            closingLabelCell.setCellValue("Closing Balance");
+            closingLabelCell.setCellStyle(totalStyle);
+            org.apache.poi.ss.usermodel.Cell summaryClosingCell = summaryClosingRow.createCell(5);
+            summaryClosingCell.setCellValue(report.closingBalance().doubleValue());
+            summaryClosingCell.setCellStyle(totalStyle);
+
+            // Auto-size columns
+            for (int i = 0; i < 6; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            workbook.write(baos);
+            log.info("Generated Bank Register Excel ({} bytes)", baos.size());
+            return baos.toByteArray();
+
+        } catch (IOException e) {
+            log.error("Failed to generate Bank Register Excel", e);
+            throw new RuntimeException("Failed to generate Bank Register Excel: " + e.getMessage(), e);
+        }
+    }
+
+    // Bank Register PDF helper methods
+    private void addBankRegisterAmountCell(PdfPTable table, BigDecimal amount, Color bgColor, boolean isDebit) {
+        String text = "";
+        if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
+            text = formatCurrency(amount);
+        }
+        Color textColor = isDebit ? PROFIT_COLOR : (amount != null && amount.compareTo(BigDecimal.ZERO) > 0 ? LOSS_COLOR : Color.BLACK);
+        PdfPCell cell = new PdfPCell(new Phrase(text, new Font(Font.HELVETICA, 9, Font.NORMAL, textColor)));
+        cell.setBackgroundColor(bgColor);
+        cell.setPadding(6);
+        cell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        cell.setBorderColor(Color.LIGHT_GRAY);
+        table.addCell(cell);
+    }
+
+    private void addBankRegisterSummaryRow(PdfPTable table, String label, BigDecimal amount) {
+        PdfPCell labelCell = new PdfPCell(new Phrase(label, TABLE_CELL_FONT));
+        labelCell.setBorder(Rectangle.NO_BORDER);
+        labelCell.setPadding(4);
+        table.addCell(labelCell);
+
+        PdfPCell amountCell = new PdfPCell(new Phrase(formatCurrency(amount), TABLE_CELL_FONT));
+        amountCell.setBorder(Rectangle.NO_BORDER);
+        amountCell.setPadding(4);
+        amountCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        table.addCell(amountCell);
+    }
 }

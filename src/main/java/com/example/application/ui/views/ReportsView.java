@@ -6,6 +6,7 @@ import com.example.application.repository.SalesInvoiceRepository;
 import com.example.application.repository.SupplierBillRepository;
 import com.example.application.service.*;
 import com.example.application.service.ReportingService.*;
+import com.example.application.service.AccountService;
 import com.example.application.ui.MainLayout;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -54,6 +55,7 @@ public class ReportsView extends VerticalLayout {
     private final FiscalYearService fiscalYearService;
     private final DepartmentService departmentService;
     private final BudgetService budgetService;
+    private final AccountService accountService;
     private final LedgerEntryRepository ledgerEntryRepository;
     private final SalesInvoiceRepository salesInvoiceRepository;
     private final SupplierBillRepository supplierBillRepository;
@@ -69,6 +71,7 @@ public class ReportsView extends VerticalLayout {
     private final VerticalLayout arAgingContent = new VerticalLayout();
     private final VerticalLayout apAgingContent = new VerticalLayout();
     private final VerticalLayout cashflowContent = new VerticalLayout();
+    private final VerticalLayout bankRegisterContent = new VerticalLayout();
 
     // Department filter for P&L
     private ComboBox<Department> plDepartmentFilter;
@@ -76,6 +79,9 @@ public class ReportsView extends VerticalLayout {
     // Budget vs Actual controls
     private ComboBox<Budget> bvaBudgetSelect;
     private ComboBox<Department> bvaDepartmentFilter;
+
+    // Bank Register controls
+    private ComboBox<Account> bankRegisterAccountSelect;
 
     // Export button containers to hold current download links
     private HorizontalLayout tbExportButtons;
@@ -85,6 +91,7 @@ public class ReportsView extends VerticalLayout {
     private HorizontalLayout arAgingExportButtons;
     private HorizontalLayout apAgingExportButtons;
     private HorizontalLayout cashflowExportButtons;
+    private HorizontalLayout bankRegisterExportButtons;
 
     // Date pickers for aging reports
     private DatePicker arAgingAsOfDate;
@@ -98,6 +105,7 @@ public class ReportsView extends VerticalLayout {
     private ArAgingReport currentArAgingReport;
     private ApAgingReport currentApAgingReport;
     private CashflowStatement currentCashflowStatement;
+    private BankRegister currentBankRegister;
 
     private static final DecimalFormat MONEY_FORMAT = new DecimalFormat("#,##0.00");
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd MMM yyyy");
@@ -108,6 +116,7 @@ public class ReportsView extends VerticalLayout {
                        FiscalYearService fiscalYearService,
                        DepartmentService departmentService,
                        BudgetService budgetService,
+                       AccountService accountService,
                        LedgerEntryRepository ledgerEntryRepository,
                        SalesInvoiceRepository salesInvoiceRepository,
                        SupplierBillRepository supplierBillRepository) {
@@ -117,6 +126,7 @@ public class ReportsView extends VerticalLayout {
         this.fiscalYearService = fiscalYearService;
         this.departmentService = departmentService;
         this.budgetService = budgetService;
+        this.accountService = accountService;
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.salesInvoiceRepository = salesInvoiceRepository;
         this.supplierBillRepository = supplierBillRepository;
@@ -220,6 +230,11 @@ public class ReportsView extends VerticalLayout {
         Tab cashflowTab = new Tab(VaadinIcon.CASH.create(), new Span("Cashflow"));
         VerticalLayout cashflowLayout = createCashflowTab();
         tabSheet.add(cashflowTab, cashflowLayout);
+
+        // Bank Register Tab
+        Tab bankRegisterTab = new Tab(VaadinIcon.BOOK.create(), new Span("Bank Register"));
+        VerticalLayout bankRegisterLayout = createBankRegisterTab();
+        tabSheet.add(bankRegisterTab, bankRegisterLayout);
 
         return tabSheet;
     }
@@ -2010,5 +2025,284 @@ public class ReportsView extends VerticalLayout {
         dialog.add(content);
         dialog.getFooter().add(closeBtn);
         dialog.open();
+    }
+
+    // ==================== BANK REGISTER TAB ====================
+
+    /**
+     * Creates the Bank Register tab layout.
+     * The Bank Register shows a chronological list of all transactions
+     * for a specific bank account with running balance.
+     */
+    private VerticalLayout createBankRegisterTab() {
+        VerticalLayout layout = new VerticalLayout();
+        layout.setSizeFull();
+        layout.setPadding(false);
+
+        // Bank account selector
+        bankRegisterAccountSelect = new ComboBox<>("Bank Account");
+        bankRegisterAccountSelect.setWidth("300px");
+        bankRegisterAccountSelect.setPlaceholder("Select a bank account");
+        bankRegisterAccountSelect.setItemLabelGenerator(a -> a.getCode() + " - " + a.getName());
+
+        // Load bank accounts
+        Company company = companyContextService.getCurrentCompany();
+        int securityLevel = companyContextService.getCurrentSecurityLevel();
+        List<Account> bankAccounts = accountService.findBankAccountsByCompanyWithSecurityLevel(company, securityLevel);
+        bankRegisterAccountSelect.setItems(bankAccounts);
+        if (!bankAccounts.isEmpty()) {
+            bankRegisterAccountSelect.setValue(bankAccounts.get(0));
+        }
+
+        // Date pickers
+        DatePicker brStartDate = new DatePicker("Start Date");
+        DatePicker brEndDate = new DatePicker("End Date");
+        brStartDate.setWidth("180px");
+        brEndDate.setWidth("180px");
+
+        // Set defaults to current month
+        LocalDate today = LocalDate.now();
+        brStartDate.setValue(today.withDayOfMonth(1));
+        brEndDate.setValue(today);
+
+        Button generateBtn = new Button("Generate Report", VaadinIcon.REFRESH.create());
+        generateBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        generateBtn.addClickListener(e -> loadBankRegister(
+            bankRegisterAccountSelect.getValue(),
+            brStartDate.getValue(),
+            brEndDate.getValue()
+        ));
+
+        // Export buttons container
+        bankRegisterExportButtons = new HorizontalLayout();
+        bankRegisterExportButtons.setSpacing(true);
+        bankRegisterExportButtons.setVisible(false);
+
+        HorizontalLayout controls = new HorizontalLayout(bankRegisterAccountSelect, brStartDate, brEndDate,
+            generateBtn, bankRegisterExportButtons);
+        controls.setAlignItems(FlexComponent.Alignment.END);
+        controls.setSpacing(true);
+
+        // Content area
+        bankRegisterContent.setSizeFull();
+        bankRegisterContent.setPadding(false);
+
+        // Initial message
+        Span initialMessage = new Span("Select a bank account and date range, then click Generate Report to view the Bank Register");
+        initialMessage.getStyle().set("color", "var(--lumo-secondary-text-color)");
+        bankRegisterContent.add(initialMessage);
+
+        layout.add(controls, bankRegisterContent);
+        return layout;
+    }
+
+    private void loadBankRegister(Account bankAccount, LocalDate startDate, LocalDate endDate) {
+        if (bankAccount == null) {
+            Notification.show("Please select a bank account", 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            return;
+        }
+
+        if (startDate == null || endDate == null) {
+            Notification.show("Please select a date range", 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            return;
+        }
+
+        if (startDate.isAfter(endDate)) {
+            Notification.show("Start date must be before end date", 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            return;
+        }
+
+        try {
+            Company company = companyContextService.getCurrentCompany();
+            int securityLevel = companyContextService.getCurrentSecurityLevel();
+            BankRegister report = reportingService.generateBankRegister(company, bankAccount, startDate, endDate, securityLevel);
+            displayBankRegister(report);
+        } catch (Exception e) {
+            Notification.show("Error generating report: " + e.getMessage(),
+                3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+        }
+    }
+
+    private void displayBankRegister(BankRegister report) {
+        bankRegisterContent.removeAll();
+        currentBankRegister = report;
+        updateBankRegisterExportButtons();
+
+        // Report header
+        H3 header = new H3("Bank Register");
+        Span accountInfo = new Span("Account: " + report.bankAccount().getCode() + " - " + report.bankAccount().getName());
+        accountInfo.getStyle().set("font-weight", "bold");
+
+        Span subtitle = new Span("Period: " + report.startDate().format(DATE_FORMAT) +
+            " to " + report.endDate().format(DATE_FORMAT));
+        subtitle.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+        // Reconciliation status
+        Span status = new Span(report.isReconciled() ? "RECONCILED" : "UNRECONCILED");
+        status.getStyle()
+            .set("color", report.isReconciled() ? "var(--lumo-success-color)" : "var(--lumo-error-color)")
+            .set("font-weight", "bold")
+            .set("margin-left", "16px");
+
+        HorizontalLayout headerRow = new HorizontalLayout(header, status);
+        headerRow.setAlignItems(FlexComponent.Alignment.BASELINE);
+
+        // Opening balance display
+        HorizontalLayout openingRow = new HorizontalLayout();
+        openingRow.setWidthFull();
+        openingRow.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        openingRow.getStyle().set("padding", "8px").set("background-color", "var(--lumo-contrast-5pct)");
+
+        Span openingLabel = new Span("Opening Balance:");
+        openingLabel.getStyle().set("font-weight", "bold");
+        Span openingAmount = new Span(formatMoney(report.openingBalance()));
+        openingRow.add(openingLabel, openingAmount);
+
+        // Transactions grid
+        Grid<BankRegisterLine> grid = new Grid<>();
+        grid.setSizeFull();
+        grid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES, GridVariant.LUMO_COMPACT);
+
+        grid.addColumn(line -> line.date().format(DATE_FORMAT))
+            .setHeader("Date")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(BankRegisterLine::reference)
+            .setHeader("Reference")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(BankRegisterLine::description)
+            .setHeader("Description")
+            .setFlexGrow(1);
+
+        grid.addColumn(BankRegisterLine::transactionType)
+            .setHeader("Type")
+            .setAutoWidth(true)
+            .setFlexGrow(0);
+
+        grid.addColumn(line -> line.debit() != null ? formatMoney(line.debit()) : "")
+            .setHeader("Debit")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        grid.addColumn(line -> line.credit() != null ? formatMoney(line.credit()) : "")
+            .setHeader("Credit")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        grid.addColumn(line -> formatMoney(line.runningBalance()))
+            .setHeader("Balance")
+            .setAutoWidth(true)
+            .setTextAlign(com.vaadin.flow.component.grid.ColumnTextAlign.END);
+
+        grid.setItems(report.lines());
+
+        // Enable drilldown to transaction on row click
+        grid.addItemClickListener(event -> {
+            BankRegisterLine line = event.getItem();
+            if (line.transactionId() != null) {
+                // Navigate to transaction or show dialog
+                Notification.show("Transaction ID: " + line.transactionId(), 2000, Notification.Position.BOTTOM_START);
+            }
+        });
+        grid.getStyle().set("cursor", "pointer");
+
+        // Totals row
+        HorizontalLayout totalsRow = new HorizontalLayout();
+        totalsRow.setWidthFull();
+        totalsRow.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
+        totalsRow.getStyle()
+            .set("font-weight", "bold")
+            .set("padding", "8px")
+            .set("border-top", "2px solid var(--lumo-contrast-20pct)");
+
+        Span countLabel = new Span(report.lines().size() + " transactions");
+        countLabel.getStyle().set("flex-grow", "1");
+
+        Span totalDebits = new Span("Total Debits: " + formatMoney(report.totalDebits()));
+        Span totalCredits = new Span("Total Credits: " + formatMoney(report.totalCredits()));
+
+        totalDebits.getStyle().set("margin-right", "16px").set("color", "var(--lumo-success-color)");
+        totalCredits.getStyle().set("margin-right", "16px").set("color", "var(--lumo-error-color)");
+
+        totalsRow.add(countLabel, totalDebits, totalCredits);
+
+        // Closing balance display
+        HorizontalLayout closingRow = new HorizontalLayout();
+        closingRow.setWidthFull();
+        closingRow.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
+        closingRow.getStyle()
+            .set("padding", "12px")
+            .set("background-color", "var(--lumo-contrast-5pct)")
+            .set("border-top", "2px solid var(--lumo-contrast-20pct)")
+            .set("font-weight", "bold")
+            .set("font-size", "var(--lumo-font-size-l)");
+
+        Span closingLabel = new Span("Closing Balance:");
+        Span closingAmount = new Span(formatMoney(report.closingBalance()));
+        closingRow.add(closingLabel, closingAmount);
+
+        // Net change summary
+        HorizontalLayout summaryRow = new HorizontalLayout();
+        summaryRow.setWidthFull();
+        summaryRow.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
+        summaryRow.getStyle().set("padding", "8px");
+
+        Span netChangeLabel = new Span("Net Change: " + formatMoney(report.netChange()));
+        if (report.netChange().compareTo(BigDecimal.ZERO) >= 0) {
+            netChangeLabel.getStyle().set("color", "var(--lumo-success-color)");
+        } else {
+            netChangeLabel.getStyle().set("color", "var(--lumo-error-color)");
+        }
+        summaryRow.add(netChangeLabel);
+
+        bankRegisterContent.add(headerRow, accountInfo, subtitle, openingRow, grid, totalsRow, closingRow, summaryRow);
+    }
+
+    private void updateBankRegisterExportButtons() {
+        bankRegisterExportButtons.removeAll();
+        if (currentBankRegister == null) {
+            bankRegisterExportButtons.setVisible(false);
+            return;
+        }
+
+        Company company = companyContextService.getCurrentCompany();
+        String dateStr = currentBankRegister.endDate().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String accountCode = currentBankRegister.bankAccount().getCode().replaceAll("[^a-zA-Z0-9]", "");
+
+        // PDF Export
+        StreamResource pdfResource = new StreamResource(
+            "BankRegister_" + accountCode + "_" + dateStr + ".pdf",
+            () -> new ByteArrayInputStream(
+                reportExportService.exportBankRegisterToPdf(currentBankRegister, company)
+            )
+        );
+        Anchor pdfLink = new Anchor(pdfResource, "");
+        pdfLink.getElement().setAttribute("download", true);
+        Button pdfBtn = new Button("PDF", VaadinIcon.FILE_TEXT.create());
+        pdfBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+        pdfLink.add(pdfBtn);
+
+        // Excel Export
+        StreamResource excelResource = new StreamResource(
+            "BankRegister_" + accountCode + "_" + dateStr + ".xlsx",
+            () -> new ByteArrayInputStream(
+                reportExportService.exportBankRegisterToExcel(currentBankRegister, company)
+            )
+        );
+        Anchor excelLink = new Anchor(excelResource, "");
+        excelLink.getElement().setAttribute("download", true);
+        Button excelBtn = new Button("Excel", VaadinIcon.FILE_TABLE.create());
+        excelBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+        excelLink.add(excelBtn);
+
+        bankRegisterExportButtons.add(pdfLink, excelLink);
+        bankRegisterExportButtons.setVisible(true);
     }
 }
