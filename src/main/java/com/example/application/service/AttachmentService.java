@@ -209,6 +209,20 @@ public class AttachmentService {
     }
 
     /**
+     * Downloads a file by attachment ID.
+     * Convenience method for retrieving file content without needing the full attachment object.
+     *
+     * @param attachmentId The attachment ID
+     * @return File content as bytes, or null if attachment not found
+     */
+    @Transactional(readOnly = true)
+    public byte[] downloadFile(Long attachmentId) {
+        return attachmentRepository.findById(attachmentId)
+            .map(this::getFileContent)
+            .orElse(null);
+    }
+
+    /**
      * Unlinks an attachment from an entity.
      * Does not delete the attachment itself.
      */

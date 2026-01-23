@@ -59,6 +59,7 @@ public class SalesInvoicesView extends VerticalLayout {
     private final ProductService productService;
     private final TaxCodeService taxCodeService;
     private final CompanyContextService companyContextService;
+    private final CompanyService companyService;
     private final InvoicePdfService invoicePdfService;
     private final EmailService emailService;
     private final ReceivableAllocationService receivableAllocationService;
@@ -80,6 +81,7 @@ public class SalesInvoicesView extends VerticalLayout {
                              ProductService productService,
                              TaxCodeService taxCodeService,
                              CompanyContextService companyContextService,
+                             CompanyService companyService,
                              InvoicePdfService invoicePdfService,
                              EmailService emailService,
                              ReceivableAllocationService receivableAllocationService,
@@ -90,6 +92,7 @@ public class SalesInvoicesView extends VerticalLayout {
         this.productService = productService;
         this.taxCodeService = taxCodeService;
         this.companyContextService = companyContextService;
+        this.companyService = companyService;
         this.invoicePdfService = invoicePdfService;
         this.emailService = emailService;
         this.receivableAllocationService = receivableAllocationService;
@@ -373,7 +376,9 @@ public class SalesInvoicesView extends VerticalLayout {
             pdfButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
             pdfButton.addClickListener(e -> {
                 try {
-                    byte[] pdfContent = invoicePdfService.generateInvoicePdf(invoice);
+                    Company company = companyContextService.getCurrentCompany();
+                    PdfSettings pdfSettings = companyService.getPdfSettings(company);
+                    byte[] pdfContent = invoicePdfService.generateInvoicePdf(invoice, pdfSettings);
                     String filename = "Invoice_" + invoice.getInvoiceNumber() + ".pdf";
 
                     StreamResource resource = new StreamResource(filename,
@@ -971,7 +976,9 @@ public class SalesInvoicesView extends VerticalLayout {
         sendButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         sendButton.addClickListener(e -> {
             try {
-                byte[] pdfContent = invoicePdfService.generateInvoicePdf(invoice);
+                Company company = companyContextService.getCurrentCompany();
+                PdfSettings pdfSettings = companyService.getPdfSettings(company);
+                byte[] pdfContent = invoicePdfService.generateInvoicePdf(invoice, pdfSettings);
                 User currentUser = companyContextService.getCurrentUser();
 
                 EmailService.EmailResult result = emailService.sendInvoice(

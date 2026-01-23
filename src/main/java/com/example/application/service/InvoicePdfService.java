@@ -9,7 +9,9 @@ import org.springframework.stereotype.Service;
 
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.net.MalformedURLException;
 import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -21,26 +23,23 @@ import java.util.stream.Collectors;
  * Service for generating sales invoice PDFs.
  * Creates professional invoice documents with company branding,
  * line items, tax breakdown, and payment terms.
+ * Supports customization via PdfSettings (logo, colors, footer).
  */
 @Service
 public class InvoicePdfService {
 
     private static final Logger log = LoggerFactory.getLogger(InvoicePdfService.class);
 
-    // Fonts
-    private static final Font TITLE_FONT = new Font(Font.HELVETICA, 24, Font.BOLD, new Color(52, 73, 94));
+    // Default fonts
     private static final Font HEADING_FONT = new Font(Font.HELVETICA, 12, Font.BOLD);
     private static final Font NORMAL_FONT = new Font(Font.HELVETICA, 10, Font.NORMAL);
     private static final Font BOLD_FONT = new Font(Font.HELVETICA, 10, Font.BOLD);
     private static final Font SMALL_FONT = new Font(Font.HELVETICA, 8, Font.NORMAL);
     private static final Font SMALL_BOLD_FONT = new Font(Font.HELVETICA, 8, Font.BOLD);
-    private static final Font TABLE_HEADER_FONT = new Font(Font.HELVETICA, 9, Font.BOLD, Color.WHITE);
     private static final Font TABLE_CELL_FONT = new Font(Font.HELVETICA, 9, Font.NORMAL);
     private static final Font LARGE_BOLD_FONT = new Font(Font.HELVETICA, 14, Font.BOLD);
 
-    // Colors
-    private static final Color PRIMARY_COLOR = new Color(52, 73, 94);    // Dark blue-gray
-    private static final Color ACCENT_COLOR = new Color(41, 128, 185);   // Blue
+    // Static colors (non-customizable)
     private static final Color ALT_ROW_BG = new Color(245, 247, 249);    // Light gray
     private static final Color LIGHT_BLUE_BG = new Color(235, 245, 251); // Light blue
     private static final Color SUCCESS_GREEN = new Color(39, 174, 96);   // Green for paid
@@ -50,23 +49,38 @@ public class InvoicePdfService {
     private final DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("d MMMM yyyy");
     private final DateTimeFormatter shortDateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
-    public InvoicePdfService() {
+    private final AttachmentService attachmentService;
+
+    public InvoicePdfService(AttachmentService attachmentService) {
+        this.attachmentService = attachmentService;
         this.currencyFormat = NumberFormat.getCurrencyInstance(new Locale("en", "NZ"));
     }
 
     /**
-     * Generates a professional PDF for a sales invoice.
+     * Generates a professional PDF for a sales invoice using default settings.
      *
      * @param invoice The invoice to generate PDF for
      * @return byte array containing the PDF content
      */
     public byte[] generateInvoicePdf(SalesInvoice invoice) {
+        return generateInvoicePdf(invoice, new PdfSettings());
+    }
+
+    /**
+     * Generates a professional PDF for a sales invoice with custom settings.
+     *
+     * @param invoice The invoice to generate PDF for
+     * @param settings PDF customization settings
+     * @return byte array containing the PDF content
+     */
+    public byte[] generateInvoicePdf(SalesInvoice invoice, PdfSettings settings) {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            Document document = new Document(PageSize.A4, 50, 50, 50, 50);
+            Rectangle pageSize = getPageSize(settings);
+            Document document = new Document(pageSize, 50, 50, 50, 50);
             PdfWriter.getInstance(document, baos);
             document.open();
 
-            addInvoiceContent(document, invoice);
+            addInvoiceContent(document, invoice, settings);
 
             document.close();
 
@@ -81,50 +95,120 @@ public class InvoicePdfService {
         }
     }
 
-    private void addInvoiceContent(Document document, SalesInvoice invoice) throws DocumentException {
+    private Rectangle getPageSize(PdfSettings settings) {
+        String paperSize = settings.getEffectivePaperSize();
+        return switch (paperSize.toUpperCase()) {
+            case "LETTER" -> PageSize.LETTER;
+            case "LEGAL" -> PageSize.LEGAL;
+            default -> PageSize.A4;
+        };
+    }
+
+    private Color parseColor(String hex, Color defaultColor) {
+        if (hex == null || hex.isBlank()) {
+            return defaultColor;
+        }
+        try {
+            return Color.decode(hex);
+        } catch (NumberFormatException e) {
+            log.warn("Invalid color hex: {}, using default", hex);
+            return defaultColor;
+        }
+    }
+
+    private void addInvoiceContent(Document document, SalesInvoice invoice, PdfSettings settings) throws DocumentException, IOException {
         Company company = invoice.getCompany();
         Contact customer = invoice.getContact();
 
+        Color primaryColor = parseColor(settings.getEffectivePrimaryColor(), new Color(52, 73, 94));
+        Color accentColor = parseColor(settings.getEffectiveAccentColor(), new Color(41, 128, 185));
+
         // Header with INVOICE title and company info
-        addHeader(document, company, invoice);
+        addHeader(document, company, invoice, settings, primaryColor);
 
         // Bill To section
-        addBillToSection(document, customer);
+        addBillToSection(document, customer, accentColor);
 
         // Invoice details (number, dates)
         addInvoiceDetails(document, invoice);
 
         // Line items table
-        addLineItemsTable(document, invoice);
+        addLineItemsTable(document, invoice, primaryColor);
 
         // Totals section
         addTotalsSection(document, invoice);
 
         // Payment information
-        addPaymentInfo(document, company, invoice);
+        addPaymentInfo(document, company, invoice, settings, accentColor);
 
         // Footer with notes
-        addFooter(document, invoice);
+        addFooter(document, invoice, settings);
     }
 
-    private void addHeader(Document document, Company company, SalesInvoice invoice) throws DocumentException {
+    private void addHeader(Document document, Company company, SalesInvoice invoice,
+                          PdfSettings settings, Color primaryColor) throws DocumentException, IOException {
         PdfPTable headerTable = new PdfPTable(2);
         headerTable.setWidthPercentage(100);
         headerTable.setWidths(new float[]{60, 40});
         headerTable.setSpacingAfter(20);
 
-        // Left: Company info
+        // Left: Company info (and logo if available)
         PdfPCell companyCell = new PdfPCell();
         companyCell.setBorder(Rectangle.NO_BORDER);
+
+        // Add logo if configured
+        if (settings.hasLogo()) {
+            try {
+                byte[] logoBytes = attachmentService.downloadFile(settings.getLogoAttachmentId());
+                if (logoBytes != null && logoBytes.length > 0) {
+                    Image logo = Image.getInstance(logoBytes);
+                    // Scale logo to reasonable size (max 150x60)
+                    logo.scaleToFit(150, 60);
+                    companyCell.addElement(logo);
+                    companyCell.addElement(Chunk.NEWLINE);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to load logo attachment {}: {}", settings.getLogoAttachmentId(), e.getMessage());
+            }
+        }
 
         Paragraph companyName = new Paragraph(company.getName(), LARGE_BOLD_FONT);
         companyCell.addElement(companyName);
 
-        // Company address/contact would go here (placeholder for now)
-        Paragraph companyDetails = new Paragraph();
-        companyDetails.setFont(SMALL_FONT);
-        companyDetails.add(new Chunk("Tax Invoice", SMALL_BOLD_FONT));
-        companyCell.addElement(companyDetails);
+        // Company details from settings
+        if (settings.hasCompanyAddress()) {
+            Paragraph address = new Paragraph(settings.getCompanyAddress(), SMALL_FONT);
+            companyCell.addElement(address);
+        }
+
+        StringBuilder contactLine = new StringBuilder();
+        if (settings.hasCompanyPhone()) {
+            contactLine.append("Ph: ").append(settings.getCompanyPhone());
+        }
+        if (settings.hasCompanyEmail()) {
+            if (contactLine.length() > 0) contactLine.append(" | ");
+            contactLine.append(settings.getCompanyEmail());
+        }
+        if (contactLine.length() > 0) {
+            companyCell.addElement(new Paragraph(contactLine.toString(), SMALL_FONT));
+        }
+
+        if (settings.hasCompanyWebsite()) {
+            companyCell.addElement(new Paragraph(settings.getCompanyWebsite(), SMALL_FONT));
+        }
+
+        if (settings.hasTaxId()) {
+            Paragraph taxId = new Paragraph("GST #: " + settings.getTaxId(), SMALL_BOLD_FONT);
+            taxId.setSpacingBefore(5);
+            companyCell.addElement(taxId);
+        }
+
+        // Tax Invoice label
+        Paragraph taxInvoiceLabel = new Paragraph();
+        taxInvoiceLabel.setSpacingBefore(10);
+        String docType = invoice.isCreditNote() ? "Credit Note" : "Tax Invoice";
+        taxInvoiceLabel.add(new Chunk(docType, SMALL_BOLD_FONT));
+        companyCell.addElement(taxInvoiceLabel);
 
         headerTable.addCell(companyCell);
 
@@ -133,7 +217,9 @@ public class InvoicePdfService {
         invoiceCell.setBorder(Rectangle.NO_BORDER);
         invoiceCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
 
-        Paragraph invoiceTitle = new Paragraph("INVOICE", TITLE_FONT);
+        Font titleFont = new Font(Font.HELVETICA, 24, Font.BOLD, primaryColor);
+        String titleText = invoice.isCreditNote() ? "CREDIT NOTE" : "INVOICE";
+        Paragraph invoiceTitle = new Paragraph(titleText, titleFont);
         invoiceTitle.setAlignment(Element.ALIGN_RIGHT);
         invoiceCell.addElement(invoiceTitle);
 
@@ -141,7 +227,7 @@ public class InvoicePdfService {
         String statusText = invoice.getStatus().name();
         Color statusColor = switch (invoice.getStatus()) {
             case ISSUED -> invoice.isPaid() ? SUCCESS_GREEN :
-                          invoice.isOverdue() ? WARNING_RED : ACCENT_COLOR;
+                          invoice.isOverdue() ? WARNING_RED : parseColor(settings.getEffectiveAccentColor(), new Color(41, 128, 185));
             case DRAFT -> Color.GRAY;
             case VOID -> WARNING_RED;
         };
@@ -162,7 +248,7 @@ public class InvoicePdfService {
         document.add(headerTable);
     }
 
-    private void addBillToSection(Document document, Contact customer) throws DocumentException {
+    private void addBillToSection(Document document, Contact customer, Color accentColor) throws DocumentException {
         PdfPTable table = new PdfPTable(1);
         table.setWidthPercentage(50);
         table.setHorizontalAlignment(Element.ALIGN_LEFT);
@@ -171,7 +257,7 @@ public class InvoicePdfService {
         PdfPCell cell = new PdfPCell();
         cell.setBackgroundColor(LIGHT_BLUE_BG);
         cell.setPadding(10);
-        cell.setBorderColor(ACCENT_COLOR);
+        cell.setBorderColor(accentColor);
 
         cell.addElement(new Paragraph("BILL TO", SMALL_BOLD_FONT));
 
@@ -203,13 +289,18 @@ public class InvoicePdfService {
         table.setSpacingAfter(20);
 
         // Invoice Number
-        addDetailBox(table, "Invoice Number", invoice.getInvoiceNumber());
+        String numberLabel = invoice.isCreditNote() ? "Credit Note #" : "Invoice Number";
+        addDetailBox(table, numberLabel, invoice.getInvoiceNumber());
 
         // Issue Date
         addDetailBox(table, "Issue Date", invoice.getIssueDate().format(shortDateFormatter));
 
-        // Due Date
-        addDetailBox(table, "Due Date", invoice.getDueDate().format(shortDateFormatter));
+        // Due Date (show original invoice for credit notes)
+        if (invoice.isCreditNote() && invoice.getOriginalInvoice() != null) {
+            addDetailBox(table, "Original Invoice", invoice.getOriginalInvoice().getInvoiceNumber());
+        } else {
+            addDetailBox(table, "Due Date", invoice.getDueDate().format(shortDateFormatter));
+        }
 
         // Reference (if any)
         String reference = invoice.getReference() != null && !invoice.getReference().isBlank()
@@ -235,19 +326,21 @@ public class InvoicePdfService {
         table.addCell(cell);
     }
 
-    private void addLineItemsTable(Document document, SalesInvoice invoice) throws DocumentException {
+    private void addLineItemsTable(Document document, SalesInvoice invoice, Color primaryColor) throws DocumentException {
         PdfPTable table = new PdfPTable(6);
         table.setWidthPercentage(100);
         table.setWidths(new float[]{8, 35, 12, 15, 12, 18});
         table.setSpacingAfter(10);
 
+        Font tableHeaderFont = new Font(Font.HELVETICA, 9, Font.BOLD, Color.WHITE);
+
         // Headers
-        addTableHeader(table, "#");
-        addTableHeader(table, "Description");
-        addTableHeader(table, "Qty");
-        addTableHeader(table, "Unit Price");
-        addTableHeader(table, "Tax");
-        addTableHeader(table, "Amount");
+        addTableHeader(table, "#", primaryColor, tableHeaderFont);
+        addTableHeader(table, "Description", primaryColor, tableHeaderFont);
+        addTableHeader(table, "Qty", primaryColor, tableHeaderFont);
+        addTableHeader(table, "Unit Price", primaryColor, tableHeaderFont);
+        addTableHeader(table, "Tax", primaryColor, tableHeaderFont);
+        addTableHeader(table, "Amount", primaryColor, tableHeaderFont);
 
         // Line items
         boolean alternate = false;
@@ -307,8 +400,8 @@ public class InvoicePdfService {
         // Total
         addTotalRow(table, "TOTAL", invoice.getTotal(), true);
 
-        // Amount paid (if any)
-        if (invoice.getAmountPaid() != null && invoice.getAmountPaid().compareTo(BigDecimal.ZERO) > 0) {
+        // Amount paid (if any) - not applicable for credit notes
+        if (!invoice.isCreditNote() && invoice.getAmountPaid() != null && invoice.getAmountPaid().compareTo(BigDecimal.ZERO) > 0) {
             addTotalRow(table, "Amount Paid", invoice.getAmountPaid().negate(), false);
             addTotalRow(table, "BALANCE DUE", invoice.getBalance(), true);
         }
@@ -338,7 +431,8 @@ public class InvoicePdfService {
         table.addCell(amountCell);
     }
 
-    private void addPaymentInfo(Document document, Company company, SalesInvoice invoice) throws DocumentException {
+    private void addPaymentInfo(Document document, Company company, SalesInvoice invoice,
+                               PdfSettings settings, Color accentColor) throws DocumentException {
         if (invoice.isPaid()) {
             // Show "PAID" stamp
             Paragraph paid = new Paragraph("PAID IN FULL",
@@ -347,8 +441,8 @@ public class InvoicePdfService {
             paid.setSpacingBefore(10);
             paid.setSpacingAfter(20);
             document.add(paid);
-        } else {
-            // Payment instructions
+        } else if (!invoice.isCreditNote()) {
+            // Payment instructions (not for credit notes)
             PdfPTable table = new PdfPTable(1);
             table.setWidthPercentage(100);
             table.setSpacingBefore(10);
@@ -357,7 +451,7 @@ public class InvoicePdfService {
             PdfPCell cell = new PdfPCell();
             cell.setBackgroundColor(LIGHT_BLUE_BG);
             cell.setPadding(15);
-            cell.setBorderColor(ACCENT_COLOR);
+            cell.setBorderColor(accentColor);
 
             cell.addElement(new Paragraph("Payment Information", HEADING_FONT));
 
@@ -367,7 +461,24 @@ public class InvoicePdfService {
             terms.add(new Chunk(invoice.getDueDate().format(dateFormatter), NORMAL_FONT));
             cell.addElement(terms);
 
-            // Bank details would typically come from company settings
+            // Bank details from settings
+            if (settings.hasBankDetails()) {
+                Paragraph bankDetails = new Paragraph();
+                bankDetails.setSpacingBefore(10);
+
+                if (settings.getBankName() != null && !settings.getBankName().isBlank()) {
+                    bankDetails.add(new Chunk("Bank: ", BOLD_FONT));
+                    bankDetails.add(new Chunk(settings.getBankName() + "\n", NORMAL_FONT));
+                }
+                if (settings.getBankAccountName() != null && !settings.getBankAccountName().isBlank()) {
+                    bankDetails.add(new Chunk("Account Name: ", BOLD_FONT));
+                    bankDetails.add(new Chunk(settings.getBankAccountName() + "\n", NORMAL_FONT));
+                }
+                bankDetails.add(new Chunk("Account Number: ", BOLD_FONT));
+                bankDetails.add(new Chunk(settings.getBankAccountNumber(), NORMAL_FONT));
+                cell.addElement(bankDetails);
+            }
+
             Paragraph bankInfo = new Paragraph();
             bankInfo.setSpacingBefore(5);
             bankInfo.add(new Chunk("Please quote invoice number ", SMALL_FONT));
@@ -380,7 +491,7 @@ public class InvoicePdfService {
         }
     }
 
-    private void addFooter(Document document, SalesInvoice invoice) throws DocumentException {
+    private void addFooter(Document document, SalesInvoice invoice, PdfSettings settings) throws DocumentException {
         // Notes section
         if (invoice.getNotes() != null && !invoice.getNotes().isBlank()) {
             Paragraph notesTitle = new Paragraph("Notes:", SMALL_BOLD_FONT);
@@ -394,19 +505,22 @@ public class InvoicePdfService {
         // Footer line
         document.add(Chunk.NEWLINE);
 
-        Paragraph footer = new Paragraph(
-            "Generated on " + LocalDate.now().format(dateFormatter) +
-            " • Thank you for your business",
-            SMALL_FONT
-        );
+        String footerText = "Generated on " + LocalDate.now().format(dateFormatter);
+        if (settings.hasFooterText()) {
+            footerText += " | " + settings.getEffectiveFooterText();
+        } else {
+            footerText += " | " + PdfSettings.DEFAULT_FOOTER_TEXT;
+        }
+
+        Paragraph footer = new Paragraph(footerText, SMALL_FONT);
         footer.setAlignment(Element.ALIGN_CENTER);
         footer.setSpacingBefore(20);
         document.add(footer);
     }
 
-    private void addTableHeader(PdfPTable table, String text) {
-        PdfPCell cell = new PdfPCell(new Phrase(text, TABLE_HEADER_FONT));
-        cell.setBackgroundColor(PRIMARY_COLOR);
+    private void addTableHeader(PdfPTable table, String text, Color bgColor, Font font) {
+        PdfPCell cell = new PdfPCell(new Phrase(text, font));
+        cell.setBackgroundColor(bgColor);
         cell.setPadding(8);
         cell.setHorizontalAlignment(Element.ALIGN_CENTER);
         table.addCell(cell);

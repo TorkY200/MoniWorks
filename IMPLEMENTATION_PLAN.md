@@ -32,13 +32,14 @@
 - **Phase 24 Login Event Tracking COMPLETE** - Tag: 0.3.6
 - **Phase 25 Product CSV Import COMPLETE** - Tag: 0.3.7
 - **Phase 26 Role Management UI COMPLETE** - Tag: 0.3.8
+- **Phase 27 PDF Template Customization COMPLETE** - Tag: 0.3.9
 - All 150 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, InvitationServiceTest: 18, SalesInvoiceServiceTest: 11, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ApplicationTest: 1)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation
 - Database configured: H2 for development, PostgreSQL for production
 - Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql, V14__statement_runs.sql, V15__additional_permissions.sql, V16__user_security_level.sql, V17__user_invitations.sql, V18__credit_notes.sql
 - All repository interfaces created (41 repositories)
 - Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService, SalesInvoiceService, ReceivableAllocationService, SupplierBillService, PayableAllocationService, PaymentRunService, RemittanceAdviceService, DepartmentService, BudgetService, KPIService, RecurringTemplateService, ReportExportService, GlobalSearchService, SavedViewService, EmailService, InvoicePdfService, StatementService, RoleService, PermissionService, InvitationService
-- Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView, AuditEventsView, ContactsView, ProductsView, SalesInvoicesView, SupplierBillsView, DepartmentsView, BudgetsView, KPIsView, RecurringTemplatesView, GlobalSearchView, StatementRunsView, UsersView, AcceptInvitationView, RolesView
+- Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView, AuditEventsView, ContactsView, ProductsView, SalesInvoicesView, SupplierBillsView, DepartmentsView, BudgetsView, KPIsView, RecurringTemplatesView, GlobalSearchView, StatementRunsView, UsersView, AcceptInvitationView, RolesView, CompanySettingsView
 - Security configuration with SecurityConfig and UserDetailsServiceImpl (using VaadinSecurityConfigurer API)
 
 ## Release 1 (SLC) - Target Features
@@ -780,6 +781,48 @@ Per specs, Release 1 must deliver:
   - Added RolesView to MainLayout navigation under admin menu (KEY icon)
   - Protected by @RolesAllowed({"ADMIN", "ROLE_ADMIN"}) for admin-only access
   - Visible only to users with MANAGE_USERS permission (alongside Users menu)
+
+### Phase 27: PDF Template Customization (COMPLETE) - Tag: 0.3.9
+- [x] PdfSettings domain class (spec 13)
+  - Created PdfSettings class for PDF template configuration
+  - Logo support via logoAttachmentId reference
+  - Company details: companyAddress, companyPhone, companyEmail, companyWebsite, taxId
+  - Bank details: bankName, bankAccountNumber, bankAccountName
+  - Appearance: footerText, paperSize (A4/Letter/Legal), primaryColor, accentColor (hex)
+  - Default values for colors and footer text
+- [x] CompanySettings wrapper class
+  - Created CompanySettings class as root container for company settings JSON
+  - Contains PdfSettings and taxBasis fields
+  - getOrCreatePdfSettings() helper for lazy initialization
+- [x] CompanyService settings management
+  - Added getSettings(Company) to parse settingsJson to CompanySettings
+  - Added saveSettings(Company, CompanySettings) to persist settings
+  - Added getPdfSettings(Company) convenience method
+  - Added savePdfSettings(Company, PdfSettings) convenience method
+  - Uses Jackson ObjectMapper for JSON serialization
+- [x] InvoicePdfService enhancements
+  - Rewrote generateInvoicePdf to accept PdfSettings parameter
+  - Configurable logo from attachment storage
+  - Dynamic company details from settings
+  - Bank payment details for invoices
+  - Paper size selection (A4, Letter, Legal)
+  - Primary/accent color customization (hex)
+  - Customizable footer text
+- [x] AttachmentService enhancement
+  - Added downloadFile(Long attachmentId) method for easy file retrieval
+- [x] CompanySettingsView admin UI (spec 13)
+  - Created CompanySettingsView with tabbed interface
+  - PDF Settings tab with:
+    - Logo upload with preview and remove
+    - Company details form (address, phone, email, website, tax ID)
+    - Bank details form (bank name, account number, account name)
+    - Appearance settings (footer text, paper size, primary/accent colors)
+  - Color pickers with hex validation
+  - Save button with success notification
+  - Added navigation to MainLayout (COG icon) under admin menu
+- [x] SalesInvoicesView integration
+  - Updated PDF generation to use company PdfSettings
+  - Both export and email actions use company-configured settings
 
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead

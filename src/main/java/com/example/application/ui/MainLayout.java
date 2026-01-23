@@ -8,6 +8,7 @@ import com.example.application.ui.views.AccountsView;
 import com.example.application.ui.views.AllocationRulesView;
 import com.example.application.ui.views.AuditEventsView;
 import com.example.application.ui.views.BankReconciliationView;
+import com.example.application.ui.views.CompanySettingsView;
 import com.example.application.ui.views.ContactsView;
 import com.example.application.ui.views.DashboardView;
 import com.example.application.ui.views.BudgetsView;
@@ -235,6 +236,8 @@ public class MainLayout extends AppLayout {
                 VaadinIcon.GROUP.create()));
             nav.addItem(new SideNavItem("Roles", RolesView.class,
                 VaadinIcon.KEY.create()));
+            nav.addItem(new SideNavItem("Company Settings", CompanySettingsView.class,
+                VaadinIcon.COG.create()));
         }
 
         Scroller scroller = new Scroller(nav);
