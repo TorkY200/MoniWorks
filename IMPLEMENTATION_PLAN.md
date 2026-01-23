@@ -36,6 +36,7 @@
 - **Phase 28 Security Level UI Enforcement COMPLETE** - Tag: 0.4.0
 - **Phase 29 Bank Register Report COMPLETE** - Tag: 0.4.1
 - **Phase 30 Bank Register Transaction Drilldown COMPLETE** - Tag: 0.4.2
+- **Phase 31 Tax Basis Settings UI COMPLETE** - Tag: 0.4.3
 - All 150 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, InvitationServiceTest: 18, SalesInvoiceServiceTest: 11, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ApplicationTest: 1)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation
 - Database configured: H2 for development, PostgreSQL for production
@@ -890,6 +891,21 @@ Per specs, Release 1 must deliver:
   - Replaced notification-only behavior with full dialog
   - Clicking any row with a transaction ID opens the detail dialog
   - Maintains cursor pointer styling for UX hint
+- [x] All 150 tests passing
+- [x] No forbidden markers
+
+### Phase 31: Tax Basis Settings UI (COMPLETE) - Tag: 0.4.3
+- [x] Tax Basis configuration in CompanySettingsView (spec 06)
+  - Added new "Tax Settings" tab to CompanySettingsView
+  - ComboBox for selecting tax basis (Cash or Invoice/Accrual)
+  - Explanatory text for each basis type
+  - Saves to CompanySettings.taxBasis field in company settingsJson
+  - Works with existing CompanySettings/PdfSettings JSON structure
+- [x] GST Returns default basis from company settings (spec 06)
+  - Added CompanyService injection to GstReturnsView
+  - Generate Return dialog now defaults to company's configured tax basis
+  - Falls back to Invoice basis if not configured
+  - Users can still override for individual returns
 - [x] All 150 tests passing
 - [x] No forbidden markers
 

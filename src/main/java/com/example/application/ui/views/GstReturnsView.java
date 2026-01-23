@@ -46,6 +46,7 @@ public class GstReturnsView extends VerticalLayout {
 
     private final TaxReturnService taxReturnService;
     private final CompanyContextService companyContextService;
+    private final CompanyService companyService;
     private final TaxLineRepository taxLineRepository;
 
     private final Grid<TaxReturn> returnsGrid = new Grid<>();
@@ -54,9 +55,11 @@ public class GstReturnsView extends VerticalLayout {
 
     public GstReturnsView(TaxReturnService taxReturnService,
                           CompanyContextService companyContextService,
+                          CompanyService companyService,
                           TaxLineRepository taxLineRepository) {
         this.taxReturnService = taxReturnService;
         this.companyContextService = companyContextService;
+        this.companyService = companyService;
         this.taxLineRepository = taxLineRepository;
 
         addClassName("gst-returns-view");
@@ -202,7 +205,20 @@ public class GstReturnsView extends VerticalLayout {
 
         ComboBox<Basis> basisCombo = new ComboBox<>("Tax Basis");
         basisCombo.setItems(Basis.values());
-        basisCombo.setValue(Basis.INVOICE);
+
+        // Default to company's configured tax basis
+        Company company = companyContextService.getCurrentCompany();
+        CompanySettings settings = companyService.getSettings(company);
+        String configuredBasis = settings.getTaxBasis();
+        if (configuredBasis != null) {
+            try {
+                basisCombo.setValue(Basis.valueOf(configuredBasis));
+            } catch (IllegalArgumentException e) {
+                basisCombo.setValue(Basis.INVOICE);
+            }
+        } else {
+            basisCombo.setValue(Basis.INVOICE);
+        }
         basisCombo.setRequired(true);
 
         // Update end date when start date changes
@@ -233,7 +249,6 @@ public class GstReturnsView extends VerticalLayout {
             }
 
             try {
-                Company company = companyContextService.getCurrentCompany();
                 TaxReturn taxReturn = taxReturnService.generateReturn(
                     company,
                     startDatePicker.getValue(),

@@ -2,7 +2,9 @@ package com.example.application.ui.views;
 
 import com.example.application.domain.Attachment;
 import com.example.application.domain.Company;
+import com.example.application.domain.CompanySettings;
 import com.example.application.domain.PdfSettings;
+import com.example.application.domain.TaxReturn;
 import com.example.application.service.AttachmentService;
 import com.example.application.service.CompanyContextService;
 import com.example.application.service.CompanyService;
@@ -52,6 +54,7 @@ public class CompanySettingsView extends VerticalLayout {
     private final AttachmentService attachmentService;
 
     private Company company;
+    private CompanySettings companySettings;
     private PdfSettings pdfSettings;
 
     // PDF Settings form fields
@@ -67,6 +70,9 @@ public class CompanySettingsView extends VerticalLayout {
     private ComboBox<String> paperSizeCombo;
     private TextField primaryColorField;
     private TextField accentColorField;
+
+    // Tax Settings form fields
+    private ComboBox<TaxReturn.Basis> taxBasisCombo;
 
     // Logo preview
     private Div logoPreview;
@@ -89,7 +95,8 @@ public class CompanySettingsView extends VerticalLayout {
             return;
         }
 
-        pdfSettings = companyService.getPdfSettings(company);
+        companySettings = companyService.getSettings(company);
+        pdfSettings = companySettings.getOrCreatePdfSettings();
         currentLogoId = pdfSettings.getLogoAttachmentId();
 
         // Header
@@ -103,6 +110,7 @@ public class CompanySettingsView extends VerticalLayout {
 
         tabs.add(new Tab("PDF & Branding"), createPdfSettingsTab());
         tabs.add(new Tab("Company Details"), createCompanyDetailsTab());
+        tabs.add(new Tab("Tax Settings"), createTaxSettingsTab());
 
         add(tabs);
     }
@@ -245,7 +253,7 @@ public class CompanySettingsView extends VerticalLayout {
         // Save button
         Button saveBtn = new Button("Save PDF Settings", VaadinIcon.CHECK.create());
         saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-        saveBtn.addClickListener(e -> savePdfSettings());
+        saveBtn.addClickListener(e -> saveAllSettings());
         layout.add(saveBtn);
 
         return layout;
@@ -298,7 +306,86 @@ public class CompanySettingsView extends VerticalLayout {
         // Save button
         Button saveBtn = new Button("Save Company Details", VaadinIcon.CHECK.create());
         saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-        saveBtn.addClickListener(e -> savePdfSettings());
+        saveBtn.addClickListener(e -> saveAllSettings());
+        layout.add(saveBtn);
+
+        return layout;
+    }
+
+    private VerticalLayout createTaxSettingsTab() {
+        VerticalLayout layout = new VerticalLayout();
+        layout.setPadding(true);
+        layout.setSpacing(true);
+
+        H3 taxTitle = new H3("Tax Settings");
+        taxTitle.addClassNames(LumoUtility.Margin.Top.NONE);
+        layout.add(taxTitle);
+
+        Span taxHelp = new Span("Configure how tax is calculated and reported for this company.");
+        taxHelp.addClassNames(LumoUtility.TextColor.SECONDARY, LumoUtility.FontSize.SMALL);
+        layout.add(taxHelp);
+
+        FormLayout taxForm = new FormLayout();
+        taxForm.setResponsiveSteps(
+            new FormLayout.ResponsiveStep("0", 1),
+            new FormLayout.ResponsiveStep("500px", 2)
+        );
+
+        taxBasisCombo = new ComboBox<>("Tax Basis");
+        taxBasisCombo.setItems(TaxReturn.Basis.values());
+        taxBasisCombo.setItemLabelGenerator(basis -> {
+            switch (basis) {
+                case CASH: return "Cash Basis";
+                case INVOICE: return "Invoice/Accrual Basis";
+                default: return basis.name();
+            }
+        });
+
+        // Load current value
+        String currentBasis = companySettings.getTaxBasis();
+        if (currentBasis != null) {
+            try {
+                taxBasisCombo.setValue(TaxReturn.Basis.valueOf(currentBasis));
+            } catch (IllegalArgumentException e) {
+                taxBasisCombo.setValue(TaxReturn.Basis.INVOICE);
+            }
+        } else {
+            taxBasisCombo.setValue(TaxReturn.Basis.INVOICE);
+        }
+
+        taxBasisCombo.setHelperText("Determines when tax is recognised for GST returns");
+
+        // Cash basis explanation
+        Span cashExplanation = new Span("Cash Basis: Tax is reported when payments are received or made. " +
+            "Simpler for small businesses but requires tracking payment dates.");
+        cashExplanation.addClassNames(LumoUtility.TextColor.SECONDARY, LumoUtility.FontSize.SMALL);
+        cashExplanation.getStyle().set("display", "block").set("margin-top", "8px");
+
+        Span invoiceExplanation = new Span("Invoice Basis: Tax is reported when invoices or bills are issued. " +
+            "Standard for most businesses and required above certain turnover thresholds.");
+        invoiceExplanation.addClassNames(LumoUtility.TextColor.SECONDARY, LumoUtility.FontSize.SMALL);
+        invoiceExplanation.getStyle().set("display", "block").set("margin-top", "4px");
+
+        taxForm.add(taxBasisCombo);
+        layout.add(taxForm);
+        layout.add(cashExplanation, invoiceExplanation);
+
+        // Note about current implementation
+        Span implementationNote = new Span("Note: The selected tax basis will be used as the default when generating GST returns. " +
+            "You can still override it for individual returns if needed.");
+        implementationNote.addClassNames(LumoUtility.FontSize.SMALL);
+        implementationNote.getStyle()
+            .set("display", "block")
+            .set("margin-top", "16px")
+            .set("padding", "8px")
+            .set("background-color", "var(--lumo-contrast-5pct)")
+            .set("border-radius", "4px");
+        layout.add(implementationNote);
+
+        // Save button
+        Button saveBtn = new Button("Save Tax Settings", VaadinIcon.CHECK.create());
+        saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        saveBtn.addClickListener(e -> saveAllSettings());
         layout.add(saveBtn);
 
         return layout;
@@ -329,8 +416,8 @@ public class CompanySettingsView extends VerticalLayout {
         logoPreview.add(noLogo);
     }
 
-    private void savePdfSettings() {
-        // Collect all values from form
+    private void saveAllSettings() {
+        // Collect PDF settings values from form
         pdfSettings.setLogoAttachmentId(currentLogoId);
         pdfSettings.setCompanyAddress(companyAddressField.getValue());
         pdfSettings.setCompanyPhone(companyPhoneField.getValue());
@@ -345,8 +432,16 @@ public class CompanySettingsView extends VerticalLayout {
         pdfSettings.setPrimaryColor(primaryColorField.getValue());
         pdfSettings.setAccentColor(accentColorField.getValue());
 
+        // Update company settings with PDF settings
+        companySettings.setPdfSettings(pdfSettings);
+
+        // Save tax basis if the combo has been initialized
+        if (taxBasisCombo != null && taxBasisCombo.getValue() != null) {
+            companySettings.setTaxBasis(taxBasisCombo.getValue().name());
+        }
+
         try {
-            companyService.savePdfSettings(company, pdfSettings);
+            companyService.saveSettings(company, companySettings);
             Notification.show("Settings saved successfully", 3000, Notification.Position.BOTTOM_START)
                 .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
         } catch (Exception e) {
