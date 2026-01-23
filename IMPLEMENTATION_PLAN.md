@@ -37,7 +37,8 @@
 - **Phase 29 Bank Register Report COMPLETE** - Tag: 0.4.1
 - **Phase 30 Bank Register Transaction Drilldown COMPLETE** - Tag: 0.4.2
 - **Phase 31 Tax Basis Settings UI COMPLETE** - Tag: 0.4.3
-- All 150 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, InvitationServiceTest: 18, SalesInvoiceServiceTest: 11, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ApplicationTest: 1)
+- **Phase 32 Tax Default Auto-Population COMPLETE** - Tag: 0.4.4
+- All 150 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, InvitationServiceTest: 18, SalesInvoiceServiceTest: 11, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation
 - Database configured: H2 for development, PostgreSQL for production
 - Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql, V14__statement_runs.sql, V15__additional_permissions.sql, V16__user_security_level.sql, V17__user_invitations.sql, V18__credit_notes.sql
@@ -906,6 +907,16 @@ Per specs, Release 1 must deliver:
   - Generate Return dialog now defaults to company's configured tax basis
   - Falls back to Invoice basis if not configured
   - Users can still override for individual returns
+- [x] All 150 tests passing
+- [x] No forbidden markers
+
+### Phase 32: Tax Default Auto-Population (COMPLETE) - Tag: 0.4.4
+- [x] Account default tax code auto-population in TransactionsView (spec 06)
+  - Added value change listener to account ComboBox in transaction line entry form
+  - When account is selected, automatically populates tax code ComboBox with account's taxDefaultCode
+  - Looks up matching TaxCode object from available tax codes list
+  - User can still override the auto-populated tax code
+  - Improves data entry efficiency by reducing manual tax code selection
 - [x] All 150 tests passing
 - [x] No forbidden markers
 

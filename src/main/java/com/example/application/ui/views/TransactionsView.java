@@ -415,6 +415,19 @@ public class TransactionsView extends VerticalLayout {
         taxCodeCombo.setClearButtonVisible(true);
         taxCodeCombo.setWidth("100px");
 
+        // Auto-populate tax code from account's default tax code (Spec 06)
+        accountCombo.addValueChangeListener(event -> {
+            Account selectedAccount = event.getValue();
+            if (selectedAccount != null && selectedAccount.getTaxDefaultCode() != null) {
+                // Find matching TaxCode object from the available tax codes
+                String defaultTaxCode = selectedAccount.getTaxDefaultCode();
+                taxCodes.stream()
+                    .filter(tc -> tc.getCode().equals(defaultTaxCode))
+                    .findFirst()
+                    .ifPresent(taxCodeCombo::setValue);
+            }
+        });
+
         TextField memoField = new TextField("Memo");
         memoField.setWidth("200px");
 
