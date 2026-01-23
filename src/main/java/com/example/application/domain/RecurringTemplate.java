@@ -120,6 +120,10 @@ public class RecurringTemplate {
   @Column(name = "execution_mode", nullable = false, length = 20)
   private ExecutionMode executionMode = ExecutionMode.CREATE_DRAFT;
 
+  // When true, fetch current product prices/descriptions when executing invoice/bill templates
+  @Column(name = "update_prices_on_execution", nullable = false)
+  private boolean updatePricesOnExecution = false;
+
   // For invoices/bills - contact to use
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "contact_id")
@@ -361,6 +365,14 @@ public class RecurringTemplate {
 
   public void setExecutionMode(ExecutionMode executionMode) {
     this.executionMode = executionMode;
+  }
+
+  public boolean isUpdatePricesOnExecution() {
+    return updatePricesOnExecution;
+  }
+
+  public void setUpdatePricesOnExecution(boolean updatePricesOnExecution) {
+    this.updatePricesOnExecution = updatePricesOnExecution;
   }
 
   public Contact getContact() {

@@ -35,6 +35,7 @@ public class RecurringTemplateService {
   private final SalesInvoiceService salesInvoiceService;
   private final SupplierBillService supplierBillService;
   private final AccountService accountService;
+  private final ProductService productService;
   private final AuditService auditService;
   private final ObjectMapper objectMapper;
 
@@ -46,6 +47,7 @@ public class RecurringTemplateService {
       SalesInvoiceService salesInvoiceService,
       SupplierBillService supplierBillService,
       AccountService accountService,
+      ProductService productService,
       AuditService auditService) {
     this.templateRepository = templateRepository;
     this.logRepository = logRepository;
@@ -54,6 +56,7 @@ public class RecurringTemplateService {
     this.salesInvoiceService = salesInvoiceService;
     this.supplierBillService = supplierBillService;
     this.accountService = accountService;
+    this.productService = productService;
     this.auditService = auditService;
     this.objectMapper = new ObjectMapper();
   }
@@ -417,6 +420,21 @@ public class RecurringTemplateService {
         BigDecimal unitPrice = new BigDecimal(lineNode.get("unitPrice").asText());
         String taxCode = lineNode.has("taxCode") ? lineNode.get("taxCode").asText() : null;
 
+        // Check if we should update price/description from current product data
+        if (template.isUpdatePricesOnExecution() && lineNode.has("productId")) {
+          Long productId = lineNode.get("productId").asLong();
+          Product product = productService.findById(productId).orElse(null);
+          if (product != null) {
+            // Use current product sell price and name
+            unitPrice = product.getSellPrice();
+            lineDescription = product.getName();
+            // Also update tax code if product has one (taxCode is a String on Product)
+            if (product.getTaxCode() != null) {
+              taxCode = product.getTaxCode();
+            }
+          }
+        }
+
         Account account =
             accountService
                 .findById(accountId)
@@ -466,6 +484,21 @@ public class RecurringTemplateService {
         BigDecimal quantity = new BigDecimal(lineNode.get("quantity").asText());
         BigDecimal unitPrice = new BigDecimal(lineNode.get("unitPrice").asText());
         String taxCode = lineNode.has("taxCode") ? lineNode.get("taxCode").asText() : null;
+
+        // Check if we should update price/description from current product data
+        if (template.isUpdatePricesOnExecution() && lineNode.has("productId")) {
+          Long productId = lineNode.get("productId").asLong();
+          Product product = productService.findById(productId).orElse(null);
+          if (product != null) {
+            // Use current product buy price and name
+            unitPrice = product.getBuyPrice();
+            lineDescription = product.getName();
+            // Also update tax code if product has one (taxCode is a String on Product)
+            if (product.getTaxCode() != null) {
+              taxCode = product.getTaxCode();
+            }
+          }
+        }
 
         Account account =
             accountService
@@ -543,6 +576,10 @@ public class RecurringTemplateService {
         if (line.getTaxCode() != null) {
           lineNode.put("taxCode", line.getTaxCode());
         }
+        // Store product ID for price/description updates on execution
+        if (line.getProduct() != null) {
+          lineNode.put("productId", line.getProduct().getId());
+        }
         lines.add(lineNode);
       }
       payload.set("lines", lines);
@@ -569,6 +606,10 @@ public class RecurringTemplateService {
         lineNode.put("unitPrice", line.getUnitPrice().toPlainString());
         if (line.getTaxCode() != null) {
           lineNode.put("taxCode", line.getTaxCode());
+        }
+        // Store product ID for price/description updates on execution
+        if (line.getProduct() != null) {
+          lineNode.put("productId", line.getProduct().getId());
         }
         lines.add(lineNode);
       }

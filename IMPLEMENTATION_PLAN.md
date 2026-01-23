@@ -69,7 +69,8 @@
 - **Phase 62 Allocation Rule Counter-Party Matching COMPLETE** - Tag: 0.7.4
 - **Phase 63 Bulk Email Role Filtering COMPLETE** - Tag: 0.7.5
 - **Phase 64 Security Level Filtering & KPI CSV Import COMPLETE** - Tag: 0.7.6
-- All 279 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 32, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21, KPIImportServiceTest: 16)
+- **Phase 65 Price/Description Updates on Recurrence COMPLETE** - Tag: 0.7.7
+- All 287 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 32, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21, KPIImportServiceTest: 16, RecurringTemplateServiceTest: 8)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
 - Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql, V14__statement_runs.sql, V15__additional_permissions.sql, V16__user_security_level.sql, V17__user_invitations.sql, V18__credit_notes.sql, V19__reconciliation_match.sql, V20__ledger_entry_reconciliation.sql, V21__allocation_rule_amount_range.sql, V22__debit_notes.sql, V23__reversal_link.sql, V24__clerk_roles.sql, V25__allocation_rule_counter_party.sql
@@ -1728,6 +1729,19 @@ Per specs, Release 1 must deliver:
 - [x] All 279 tests passing
 - [x] No forbidden markers
 
+### Phase 65: Price/Description Updates on Recurrence (COMPLETE) - Tag: 0.7.7
+- [x] Price/description updates on recurrence for invoice lines (spec 11)
+  - Implements "Price/description updates on recurrence (for invoice lines)" feature from spec 11
+  - Added updatePricesOnExecution boolean flag to RecurringTemplate entity
+  - Created V26__recurring_template_update_prices.sql migration
+  - Updated RecurringTemplateService to include productId in invoice/bill payload serialization
+  - When updatePricesOnExecution is true, executeInvoiceTemplate fetches current product sellPrice and name
+  - When updatePricesOnExecution is true, executeBillTemplate fetches current product buyPrice and name
+  - Updated RecurringTemplatesView with "Update prices on execution" checkbox in create/edit dialogs
+- [x] RecurringTemplateServiceTest with 8 unit tests covering all scenarios
+- [x] All 287 tests passing
+- [x] No forbidden markers
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -1811,6 +1825,7 @@ Per specs, Release 1 must deliver:
 - ReversalLink entity formally tracks reversal relationships between transactions per spec 04 domain model; string-based "REV-" reference tracking in description is kept for backwards compatibility and quick visual identification
 - Dashboard tiles can leverage existing repository methods (e.g., ContactNoteRepository.findDueFollowUpsByCompany()) - check for existing queries before writing new ones; existing domain queries often already support dashboard use cases
 - AllocationRule.matches() now has 3-parameter overload (description, amount, counterParty) for spec 05 counter-party matching; counter-party extracted from BankFeedItem.rawJson via extractCounterParty() supporting QIF JSON and OFX formats
+- RecurringTemplateService price/description updates: When updatePricesOnExecution is true, executeInvoiceTemplate/executeBillTemplate fetch current product prices (sellPrice for invoices, buyPrice for bills) and names before creating the document; requires productId to be serialized in invoice/bill line payloads
 
 ## Remaining Gaps (From Spec Analysis)
 
@@ -1822,7 +1837,6 @@ Per specs, Release 1 must deliver:
 
 **Nice-to-have Enhancements**:
 - Direct credit file export for batch payments (spec 10)
-- Price/description updates on recurrence templates (spec 11)
 
 **Completed in this session**:
 - AP_CLERK/AR_CLERK roles - Phase 57
@@ -1833,6 +1847,7 @@ Per specs, Release 1 must deliver:
 - Bulk email role filtering (spec 07) - Phase 63
 - Security level filtering for all financial reports (spec 02) - Phase 64
 - KPI CSV Import (spec 12 completion) - Phase 64
+- Price/description updates on recurrence (spec 11) - Phase 65
 
 ## Technical Notes
 - Build: `./mvnw compile`

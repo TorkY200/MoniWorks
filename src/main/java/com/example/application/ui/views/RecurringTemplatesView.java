@@ -11,6 +11,7 @@ import com.example.application.service.*;
 import com.example.application.ui.MainLayout;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.datepicker.DatePicker;
@@ -281,6 +282,17 @@ public class RecurringTemplatesView extends VerticalLayout {
                 ? "Auto-post"
                 : "Create as draft"));
 
+    // Only show update prices option for invoice/bill templates
+    if (selectedTemplate.getTemplateType() == TemplateType.INVOICE
+        || selectedTemplate.getTemplateType() == TemplateType.BILL) {
+      details.add(
+          createDetailRow(
+              "Update Prices:",
+              selectedTemplate.isUpdatePricesOnExecution()
+                  ? "Yes (uses current product prices)"
+                  : "No (uses frozen prices)"));
+    }
+
     if (selectedTemplate.getContact() != null) {
       details.add(createDetailRow("Contact:", selectedTemplate.getContact().getName()));
     }
@@ -533,6 +545,15 @@ public class RecurringTemplatesView extends VerticalLayout {
     modeCombo.setValue(ExecutionMode.CREATE_DRAFT);
     modeCombo.setRequired(true);
 
+    // Update prices checkbox (for invoices/bills with product lines)
+    Checkbox updatePricesCheckbox = new Checkbox("Update prices on execution");
+    updatePricesCheckbox.setVisible(false);
+    updatePricesCheckbox
+        .getElement()
+        .setAttribute(
+            "title",
+            "When enabled, fetches current product prices and descriptions when the template runs");
+
     // Contact selector (for invoices/bills)
     Company company = companyContextService.getCurrentCompany();
     List<Contact> contacts = contactService.findByCompany(company);
@@ -555,12 +576,13 @@ public class RecurringTemplatesView extends VerticalLayout {
         "JSON format: {\"description\":\"...\",\"lines\":[{\"accountId\":1,\"amount\":\"100.00\",\"direction\":\"DEBIT\"}]}");
     payloadArea.setValue("{\"description\":\"\",\"lines\":[]}");
 
-    // Show/hide contact based on type
+    // Show/hide contact and update prices checkbox based on type
     typeCombo.addValueChangeListener(
         e -> {
           TemplateType type = e.getValue();
           boolean needsContact = type == TemplateType.INVOICE || type == TemplateType.BILL;
           contactCombo.setVisible(needsContact);
+          updatePricesCheckbox.setVisible(needsContact);
           if (needsContact) {
             contactCombo.setRequired(true);
           }
@@ -577,9 +599,11 @@ public class RecurringTemplatesView extends VerticalLayout {
         maxOccurrencesField,
         modeCombo,
         contactCombo,
+        updatePricesCheckbox,
         descriptionArea,
         payloadArea);
     form.setColspan(nameField, 2);
+    form.setColspan(updatePricesCheckbox, 2);
     form.setColspan(descriptionArea, 2);
     form.setColspan(payloadArea, 2);
     form.setResponsiveSteps(
@@ -628,6 +652,7 @@ public class RecurringTemplatesView extends VerticalLayout {
             template.setMaxOccurrences(maxOccurrencesField.getValue());
             template.setExecutionMode(modeCombo.getValue());
             template.setContact(contactCombo.getValue());
+            template.setUpdatePricesOnExecution(updatePricesCheckbox.getValue());
             template.setDescription(descriptionArea.getValue());
 
             templateService.save(template);
@@ -697,6 +722,19 @@ public class RecurringTemplatesView extends VerticalLayout {
     modeCombo.setValue(template.getExecutionMode());
     modeCombo.setRequired(true);
 
+    // Update prices checkbox (only visible for invoice/bill templates)
+    Checkbox updatePricesCheckbox = new Checkbox("Update prices on execution");
+    updatePricesCheckbox.setValue(template.isUpdatePricesOnExecution());
+    updatePricesCheckbox
+        .getElement()
+        .setAttribute(
+            "title",
+            "When enabled, fetches current product prices and descriptions when the template runs");
+    boolean isInvoiceOrBill =
+        template.getTemplateType() == TemplateType.INVOICE
+            || template.getTemplateType() == TemplateType.BILL;
+    updatePricesCheckbox.setVisible(isInvoiceOrBill);
+
     TextArea descriptionArea = new TextArea("Description");
     descriptionArea.setMaxLength(255);
     descriptionArea.setWidthFull();
@@ -710,8 +748,10 @@ public class RecurringTemplatesView extends VerticalLayout {
         endDateField,
         maxOccurrencesField,
         modeCombo,
+        updatePricesCheckbox,
         descriptionArea);
     form.setColspan(nameField, 2);
+    form.setColspan(updatePricesCheckbox, 2);
     form.setColspan(descriptionArea, 2);
     form.setResponsiveSteps(
         new FormLayout.ResponsiveStep("0", 1), new FormLayout.ResponsiveStep("400px", 2));
@@ -735,6 +775,7 @@ public class RecurringTemplatesView extends VerticalLayout {
             template.setEndDate(endDateField.getValue());
             template.setMaxOccurrences(maxOccurrencesField.getValue());
             template.setExecutionMode(modeCombo.getValue());
+            template.setUpdatePricesOnExecution(updatePricesCheckbox.getValue());
             template.setDescription(descriptionArea.getValue());
 
             templateService.save(template);
