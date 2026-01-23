@@ -64,6 +64,7 @@
 - **Phase 57 AP_CLERK and AR_CLERK Role Templates COMPLETE** - Tag: 0.6.9
 - **Phase 58 Bulk Email to Contacts COMPLETE** - Tag: 0.7.0
 - **Phase 59 Configurable Dashboard Tiles COMPLETE** - Tag: 0.7.1
+- **Phase 60 Audit Event Retention Policy COMPLETE** - Tag: 0.7.2
 - All 255 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 24, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
@@ -1581,6 +1582,38 @@ Per specs, Release 1 must deliver:
 - [x] All 255 tests passing
 - [x] No forbidden markers
 
+### Phase 60: Audit Event Retention Policy Configuration (COMPLETE) - Tag: 0.7.2
+- [x] AuditRetentionSettings domain class (spec 14)
+  - Created AuditRetentionSettings class for retention policy configuration
+  - Fields: enabled (Boolean), retentionDays (Integer), keepLoginEvents (Boolean)
+  - Default: keep forever (enabled=false), 7 years retention when enabled
+  - Minimum retention: 90 days for compliance
+  - Helper methods: isEnabled(), getEffectiveRetentionDays(), shouldKeepLoginEvents()
+  - Validation and description generation methods
+- [x] CompanySettings extended with auditRetention field
+  - Added getOrCreateAuditRetention() pattern for safe access
+- [x] AuditEventRepository retention queries
+  - Added deleteByCompanyAndCreatedAtBefore() for bulk deletion
+  - Added deleteByCompanyAndCreatedAtBeforeExcludingLoginEvents() for preserving login events
+  - Added countByCompanyAndCreatedAtBefore() for preview functionality
+  - Added countByCompanyAndCreatedAtBeforeExcludingLoginEvents()
+- [x] AuditService retention enforcement
+  - Added @Scheduled enforceAllRetentionPolicies() running daily at 4:00 AM
+  - Added enforceRetentionPolicy(Company) for per-company enforcement
+  - Added getRetentionSettings(Company) to parse settings from JSON
+  - Added previewRetentionPolicy() for impact preview without deletion
+  - Logs RETENTION_POLICY_ENFORCED event after cleanup
+- [x] CompanySettingsView "Audit Retention" tab
+  - Enable/disable checkbox for retention policy
+  - Retention days field with minimum 90 days validation
+  - Keep login events checkbox
+  - Impact preview showing how many events would be affected
+  - Warning notice about data deletion
+  - Current policy display
+- [x] Fixes spec 14 acceptance criteria: "retention policy is configurable but defaults to 'keep'"
+- [x] All 255 tests passing
+- [x] No forbidden markers
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -1675,12 +1708,12 @@ Per specs, Release 1 must deliver:
 **Nice-to-have Enhancements**:
 - Direct credit file export for batch payments (spec 10)
 - Price/description updates on recurrence templates (spec 11)
-- Audit event retention policy configuration (spec 14)
 
 **Completed in this session**:
 - AP_CLERK/AR_CLERK roles - Phase 57
 - Bulk email to contacts - Phase 58
 - Configurable dashboard tiles - Phase 59
+- Audit event retention policy configuration (spec 14) - Phase 60
 
 ## Technical Notes
 - Build: `./mvnw compile`

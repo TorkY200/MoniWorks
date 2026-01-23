@@ -4,16 +4,19 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 
 import com.example.application.domain.Attachment;
+import com.example.application.domain.AuditRetentionSettings;
 import com.example.application.domain.Company;
 import com.example.application.domain.CompanySettings;
 import com.example.application.domain.PdfSettings;
 import com.example.application.domain.TaxReturn;
 import com.example.application.service.AttachmentService;
+import com.example.application.service.AuditService;
 import com.example.application.service.CompanyContextService;
 import com.example.application.service.CompanyService;
 import com.example.application.ui.MainLayout;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Div;
@@ -28,6 +31,7 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.tabs.Tab;
 import com.vaadin.flow.component.tabs.TabSheet;
+import com.vaadin.flow.component.textfield.IntegerField;
 import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.component.upload.Upload;
@@ -51,10 +55,12 @@ public class CompanySettingsView extends VerticalLayout {
   private final CompanyService companyService;
   private final CompanyContextService companyContextService;
   private final AttachmentService attachmentService;
+  private final AuditService auditService;
 
   private Company company;
   private CompanySettings companySettings;
   private PdfSettings pdfSettings;
+  private AuditRetentionSettings auditRetention;
 
   // PDF Settings form fields
   private TextArea companyAddressField;
@@ -73,6 +79,12 @@ public class CompanySettingsView extends VerticalLayout {
   // Tax Settings form fields
   private ComboBox<TaxReturn.Basis> taxBasisCombo;
 
+  // Audit Retention form fields
+  private Checkbox retentionEnabledCheckbox;
+  private IntegerField retentionDaysField;
+  private Checkbox keepLoginEventsCheckbox;
+  private Span retentionPreviewSpan;
+
   // Logo preview
   private Div logoPreview;
   private Long currentLogoId;
@@ -80,10 +92,12 @@ public class CompanySettingsView extends VerticalLayout {
   public CompanySettingsView(
       CompanyService companyService,
       CompanyContextService companyContextService,
-      AttachmentService attachmentService) {
+      AttachmentService attachmentService,
+      AuditService auditService) {
     this.companyService = companyService;
     this.companyContextService = companyContextService;
     this.attachmentService = attachmentService;
+    this.auditService = auditService;
 
     setSizeFull();
     setPadding(true);
@@ -97,6 +111,7 @@ public class CompanySettingsView extends VerticalLayout {
 
     companySettings = companyService.getSettings(company);
     pdfSettings = companySettings.getOrCreatePdfSettings();
+    auditRetention = companySettings.getOrCreateAuditRetention();
     currentLogoId = pdfSettings.getLogoAttachmentId();
 
     // Header
@@ -111,6 +126,7 @@ public class CompanySettingsView extends VerticalLayout {
     tabs.add(new Tab("PDF & Branding"), createPdfSettingsTab());
     tabs.add(new Tab("Company Details"), createCompanyDetailsTab());
     tabs.add(new Tab("Tax Settings"), createTaxSettingsTab());
+    tabs.add(new Tab("Audit Retention"), createAuditRetentionTab());
 
     add(tabs);
   }
@@ -415,6 +431,157 @@ public class CompanySettingsView extends VerticalLayout {
     return layout;
   }
 
+  private VerticalLayout createAuditRetentionTab() {
+    VerticalLayout layout = new VerticalLayout();
+    layout.setPadding(true);
+    layout.setSpacing(true);
+
+    H3 retentionTitle = new H3("Audit Event Retention Policy");
+    retentionTitle.addClassNames(LumoUtility.Margin.Top.NONE);
+    layout.add(retentionTitle);
+
+    Span retentionHelp =
+        new Span(
+            "Configure how long audit events are retained. By default, all audit events are kept "
+                + "forever. Enable a retention policy to automatically delete old events.");
+    retentionHelp.addClassNames(LumoUtility.TextColor.SECONDARY, LumoUtility.FontSize.SMALL);
+    layout.add(retentionHelp);
+
+    // Warning notice
+    Div warningNotice = new Div();
+    warningNotice.addClassNames(
+        LumoUtility.Padding.MEDIUM,
+        LumoUtility.BorderRadius.MEDIUM,
+        LumoUtility.Margin.Vertical.MEDIUM);
+    warningNotice
+        .getStyle()
+        .set("background-color", "var(--lumo-error-color-10pct)")
+        .set("border-left", "4px solid var(--lumo-error-color)");
+    Span warningText =
+        new Span(
+            "⚠ Warning: Deleted audit events cannot be recovered. Ensure your retention period "
+                + "meets your legal and compliance requirements. Many jurisdictions require "
+                + "financial records to be kept for 7 years.");
+    warningText.addClassNames(LumoUtility.FontSize.SMALL);
+    warningNotice.add(warningText);
+    layout.add(warningNotice);
+
+    FormLayout retentionForm = new FormLayout();
+    retentionForm.setResponsiveSteps(
+        new FormLayout.ResponsiveStep("0", 1), new FormLayout.ResponsiveStep("500px", 2));
+
+    // Enable retention checkbox
+    retentionEnabledCheckbox = new Checkbox("Enable automatic audit event deletion");
+    retentionEnabledCheckbox.setValue(auditRetention.isEnabled());
+    retentionEnabledCheckbox.addValueChangeListener(e -> updateRetentionFieldsEnabled());
+
+    // Retention days field
+    retentionDaysField = new IntegerField("Retention Period (days)");
+    retentionDaysField.setValue(auditRetention.getEffectiveRetentionDays());
+    retentionDaysField.setMin(AuditRetentionSettings.MINIMUM_RETENTION_DAYS);
+    retentionDaysField.setMax(36500); // 100 years
+    retentionDaysField.setStepButtonsVisible(true);
+    retentionDaysField.setHelperText(
+        "Minimum "
+            + AuditRetentionSettings.MINIMUM_RETENTION_DAYS
+            + " days. Common values: 365 (1 year), 730 (2 years), 2555 (7 years)");
+    retentionDaysField.addValueChangeListener(e -> updateRetentionPreview());
+
+    // Keep login events checkbox
+    keepLoginEventsCheckbox = new Checkbox("Keep login/logout events (exclude from deletion)");
+    keepLoginEventsCheckbox.setValue(auditRetention.shouldKeepLoginEvents());
+    keepLoginEventsCheckbox.setHelperText("Login events often need longer retention for security");
+    keepLoginEventsCheckbox.addValueChangeListener(e -> updateRetentionPreview());
+
+    retentionForm.add(retentionEnabledCheckbox, retentionDaysField, keepLoginEventsCheckbox);
+    retentionForm.setColspan(retentionEnabledCheckbox, 2);
+    retentionForm.setColspan(keepLoginEventsCheckbox, 2);
+    layout.add(retentionForm);
+
+    // Preview section
+    Div previewSection = new Div();
+    previewSection.addClassNames(
+        LumoUtility.Padding.MEDIUM,
+        LumoUtility.BorderRadius.MEDIUM,
+        LumoUtility.Margin.Vertical.MEDIUM);
+    previewSection.getStyle().set("background-color", "var(--lumo-contrast-5pct)");
+
+    H3 previewTitle = new H3("Impact Preview");
+    previewTitle.addClassNames(LumoUtility.Margin.Top.NONE, LumoUtility.FontSize.MEDIUM);
+    previewSection.add(previewTitle);
+
+    retentionPreviewSpan = new Span();
+    retentionPreviewSpan.addClassNames(LumoUtility.FontSize.SMALL);
+    previewSection.add(retentionPreviewSpan);
+
+    layout.add(previewSection);
+
+    // Update initial state
+    updateRetentionFieldsEnabled();
+    updateRetentionPreview();
+
+    // Current policy display
+    Span currentPolicyLabel = new Span("Current Policy: ");
+    currentPolicyLabel.addClassNames(LumoUtility.FontWeight.BOLD);
+    Span currentPolicy = new Span(auditRetention.getDescription());
+    currentPolicy.addClassNames(LumoUtility.TextColor.PRIMARY);
+    HorizontalLayout policyDisplay = new HorizontalLayout(currentPolicyLabel, currentPolicy);
+    policyDisplay.setSpacing(false);
+    layout.add(policyDisplay);
+
+    // Save button
+    Button saveBtn = new Button("Save Retention Settings", VaadinIcon.CHECK.create());
+    saveBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+    saveBtn.addClickListener(e -> saveAllSettings());
+    layout.add(saveBtn);
+
+    return layout;
+  }
+
+  private void updateRetentionFieldsEnabled() {
+    boolean enabled = retentionEnabledCheckbox.getValue();
+    retentionDaysField.setEnabled(enabled);
+    keepLoginEventsCheckbox.setEnabled(enabled);
+    updateRetentionPreview();
+  }
+
+  private void updateRetentionPreview() {
+    if (!retentionEnabledCheckbox.getValue()) {
+      retentionPreviewSpan.setText("Policy disabled. All audit events will be kept forever.");
+      return;
+    }
+
+    Integer days = retentionDaysField.getValue();
+    if (days == null || days < AuditRetentionSettings.MINIMUM_RETENTION_DAYS) {
+      retentionPreviewSpan.setText("Please enter a valid retention period.");
+      return;
+    }
+
+    boolean keepLogin = keepLoginEventsCheckbox.getValue();
+
+    // Get preview count
+    long wouldDelete = auditService.previewRetentionPolicy(company, days, keepLogin);
+
+    String period;
+    if (days >= 365) {
+      int years = days / 365;
+      period = years == 1 ? "1 year" : years + " years";
+    } else {
+      period = days + " days";
+    }
+
+    StringBuilder preview = new StringBuilder();
+    preview.append("When enabled, events older than ").append(period).append(" will be deleted.\n");
+    preview.append("Currently, ").append(wouldDelete).append(" event(s) would be affected");
+    if (keepLogin) {
+      preview.append(" (excluding login/logout events)");
+    }
+    preview.append(".");
+
+    retentionPreviewSpan.setText(preview.toString());
+    retentionPreviewSpan.getStyle().set("white-space", "pre-line");
+  }
+
   private void updateLogoPreview() {
     logoPreview.removeAll();
 
@@ -462,6 +629,14 @@ public class CompanySettingsView extends VerticalLayout {
     // Save tax basis if the combo has been initialized
     if (taxBasisCombo != null && taxBasisCombo.getValue() != null) {
       companySettings.setTaxBasis(taxBasisCombo.getValue().name());
+    }
+
+    // Save audit retention settings if the form has been initialized
+    if (retentionEnabledCheckbox != null) {
+      auditRetention.setEnabled(retentionEnabledCheckbox.getValue());
+      auditRetention.setRetentionDays(retentionDaysField.getValue());
+      auditRetention.setKeepLoginEvents(keepLoginEventsCheckbox.getValue());
+      companySettings.setAuditRetention(auditRetention);
     }
 
     try {

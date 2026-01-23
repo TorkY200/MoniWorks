@@ -15,8 +15,12 @@ public class CompanySettings {
   // Tax settings (for future use - cash vs invoice basis)
   private String taxBasis; // CASH, INVOICE
 
+  // Audit event retention policy settings
+  private AuditRetentionSettings auditRetention;
+
   public CompanySettings() {
     this.pdfSettings = new PdfSettings();
+    this.auditRetention = new AuditRetentionSettings();
   }
 
   public PdfSettings getPdfSettings() {
@@ -41,5 +45,21 @@ public class CompanySettings {
       pdfSettings = new PdfSettings();
     }
     return pdfSettings;
+  }
+
+  public AuditRetentionSettings getAuditRetention() {
+    return auditRetention;
+  }
+
+  public void setAuditRetention(AuditRetentionSettings auditRetention) {
+    this.auditRetention = auditRetention;
+  }
+
+  /** Gets audit retention settings, creating default if null. */
+  public AuditRetentionSettings getOrCreateAuditRetention() {
+    if (auditRetention == null) {
+      auditRetention = new AuditRetentionSettings();
+    }
+    return auditRetention;
   }
 }
