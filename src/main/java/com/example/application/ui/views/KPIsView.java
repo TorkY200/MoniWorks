@@ -2,13 +2,18 @@ package com.example.application.ui.views;
 
 import java.math.BigDecimal;
 import java.text.DecimalFormat;
+import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 import com.example.application.domain.*;
 import com.example.application.service.*;
 import com.example.application.ui.MainLayout;
+import com.example.application.ui.components.SparklineChart;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
@@ -17,8 +22,10 @@ import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
+import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
+import com.vaadin.flow.component.html.H4;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
@@ -219,14 +226,122 @@ public class KPIsView extends VerticalLayout {
         e -> {
           selectedFiscalYear = e.getValue();
           loadKPIValues();
+          updateTrendChart();
         });
+
+    // Trend chart section
+    Div trendChartContainer = createTrendChartSection();
 
     // KPI values grid
     configureValueGrid();
     loadKPIValues();
 
-    detailPanel.add(headerLayout, fiscalYearCombo, valueGrid);
+    detailPanel.add(headerLayout, fiscalYearCombo, trendChartContainer, valueGrid);
     detailPanel.setFlexGrow(1, valueGrid);
+  }
+
+  private Div trendChart;
+
+  /** Creates the trend chart section showing KPI values over time. */
+  private Div createTrendChartSection() {
+    Div container = new Div();
+    container
+        .getStyle()
+        .set("padding", "var(--lumo-space-m)")
+        .set("background", "var(--lumo-contrast-5pct)")
+        .set("border-radius", "var(--lumo-border-radius-m)")
+        .set("margin-bottom", "var(--lumo-space-m)");
+
+    H4 chartTitle = new H4("Trend");
+    chartTitle.getStyle().set("margin", "0 0 var(--lumo-space-s) 0");
+    container.add(chartTitle);
+
+    trendChart = new Div();
+    trendChart.setId("kpi-trend-chart");
+    container.add(trendChart);
+
+    updateTrendChart();
+    return container;
+  }
+
+  /** Updates the trend chart with current KPI values. */
+  private void updateTrendChart() {
+    if (trendChart == null) return;
+    trendChart.removeAll();
+
+    if (selectedKPI == null || selectedFiscalYear == null) {
+      Span noData = new Span("Select a KPI and fiscal year to see trends");
+      noData.getStyle().set("color", "var(--lumo-secondary-text-color)");
+      trendChart.add(noData);
+      return;
+    }
+
+    List<KPIValue> values =
+        kpiService.getValuesForKPIAndFiscalYear(selectedKPI, selectedFiscalYear.getId());
+
+    if (values.isEmpty()) {
+      Span noData = new Span("No values recorded for this period");
+      noData.getStyle().set("color", "var(--lumo-secondary-text-color)");
+      trendChart.add(noData);
+      return;
+    }
+
+    // Sort values chronologically (oldest first for chart display)
+    List<KPIValue> sortedValues = new ArrayList<>(values);
+    sortedValues.sort(Comparator.comparing(kv -> kv.getPeriod().getStartDate()));
+
+    // Convert to chart data points
+    List<SparklineChart.DataPoint> dataPoints = new ArrayList<>();
+    for (KPIValue kv : sortedValues) {
+      String label = PERIOD_FORMAT.format(kv.getPeriod().getStartDate());
+      dataPoints.add(new SparklineChart.DataPoint(label, kv.getValue()));
+    }
+
+    // Create the sparkline chart
+    SparklineChart chart = new SparklineChart(dataPoints);
+
+    // Determine color based on KPI unit type
+    String unit = selectedKPI.getUnit();
+    if (unit != null && (unit.equals("$") || unit.contains("$"))) {
+      chart.setNumberFormat(NumberFormat.getCurrencyInstance(new Locale("en", "NZ")));
+      chart.setBarColor("var(--lumo-success-color)");
+    } else if (unit != null && unit.equals("%")) {
+      chart.setNumberFormat(NumberFormat.getPercentInstance());
+      chart.setBarColor("var(--lumo-primary-color)");
+    } else {
+      chart.setNumberFormat(NumberFormat.getNumberInstance());
+      chart.setBarColor("var(--lumo-primary-color)");
+    }
+
+    chart.setShowLabels(true);
+    chart.setShowValues(true);
+    chart.setBarWidth(40);
+    chart.setMaxHeight(80);
+
+    trendChart.add(chart);
+
+    // Add trend indicator if we have at least 2 values
+    if (sortedValues.size() >= 2) {
+      KPIValue latest = sortedValues.get(sortedValues.size() - 1);
+      KPIValue previous = sortedValues.get(sortedValues.size() - 2);
+      Span trendIndicator =
+          SparklineChart.createTrendIndicator(latest.getValue(), previous.getValue());
+      trendIndicator
+          .getStyle()
+          .set("margin-left", "var(--lumo-space-m)")
+          .set("display", "inline-block");
+
+      HorizontalLayout trendRow = new HorizontalLayout();
+      trendRow.setAlignItems(FlexComponent.Alignment.CENTER);
+      trendRow.setSpacing(true);
+      trendRow.getStyle().set("margin-top", "var(--lumo-space-s)");
+
+      Span trendLabel = new Span("vs previous period:");
+      trendLabel.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+      trendRow.add(trendLabel, trendIndicator);
+      trendChart.add(trendRow);
+    }
   }
 
   private void configureValueGrid() {
@@ -290,12 +405,14 @@ public class KPIsView extends VerticalLayout {
   private void loadKPIValues() {
     if (selectedKPI == null || selectedFiscalYear == null) {
       valueGrid.setItems(List.of());
+      updateTrendChart();
       return;
     }
 
     List<KPIValue> values =
         kpiService.getValuesForKPIAndFiscalYear(selectedKPI, selectedFiscalYear.getId());
     valueGrid.setItems(values);
+    updateTrendChart();
   }
 
   private void openKPIDialog(KPI kpi) {

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -19,11 +20,13 @@ import com.example.application.repository.TaxLineRepository;
 import com.example.application.service.CompanyContextService;
 import com.example.application.service.ReportingService;
 import com.example.application.ui.MainLayout;
+import com.example.application.ui.components.SparklineChart;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.FlexLayout;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -93,6 +96,7 @@ public class DashboardView extends VerticalLayout {
     // Add dashboard tiles
     tilesContainer.add(
         createCashBalanceTile(company),
+        createThisMonthTile(company),
         createIncomeTrendTile(company),
         createGstDueTile(company),
         createOverdueReceivablesTile(company),
@@ -200,10 +204,10 @@ public class DashboardView extends VerticalLayout {
   }
 
   /**
-   * Creates the Income Trend tile showing recent month's income vs expenses. Respects the user's
+   * Creates the This Month tile showing current month's income vs expenses. Respects the user's
    * security level - restricted accounts are not included.
    */
-  private Div createIncomeTrendTile(Company company) {
+  private Div createThisMonthTile(Company company) {
     Div tile = createTileBase("This Month", "var(--lumo-success-color)");
     VerticalLayout content = (VerticalLayout) tile.getComponentAt(1);
 
@@ -260,6 +264,89 @@ public class DashboardView extends VerticalLayout {
 
     // Period info
     Paragraph period = new Paragraph(monthStart.format(DateTimeFormatter.ofPattern("MMMM yyyy")));
+    period
+        .getStyle()
+        .set("color", "var(--lumo-secondary-text-color)")
+        .set("font-size", "var(--lumo-font-size-xs)")
+        .set("margin-top", "auto")
+        .set("margin-bottom", "0");
+    content.add(period);
+
+    return tile;
+  }
+
+  /**
+   * Creates the Income Trend tile showing income over the last 6 months as a sparkline chart.
+   * Respects the user's security level - restricted accounts are not included.
+   */
+  private Div createIncomeTrendTile(Company company) {
+    Div tile = createTileBase("Income Trend", "var(--lumo-primary-color)");
+    VerticalLayout content = (VerticalLayout) tile.getComponentAt(1);
+
+    LocalDate today = LocalDate.now();
+    int securityLevel = companyContextService.getCurrentSecurityLevel();
+
+    // Calculate income for the last 6 months
+    List<SparklineChart.DataPoint> incomeData = new ArrayList<>();
+    DateTimeFormatter monthFormat = DateTimeFormatter.ofPattern("MMM");
+
+    BigDecimal previousIncome = null;
+    BigDecimal currentIncome = null;
+
+    for (int i = 5; i >= 0; i--) {
+      LocalDate monthStart = today.minusMonths(i).withDayOfMonth(1);
+      LocalDate monthEnd;
+      if (i == 0) {
+        // Current month - use today as end date
+        monthEnd = today;
+      } else {
+        // Previous months - use last day of month
+        monthEnd = monthStart.plusMonths(1).minusDays(1);
+      }
+
+      ReportingService.ProfitAndLoss pnl =
+          reportingService.generateProfitAndLoss(company, monthStart, monthEnd, securityLevel);
+
+      String label = monthStart.format(monthFormat);
+      incomeData.add(new SparklineChart.DataPoint(label, pnl.totalIncome()));
+
+      // Track for trend calculation
+      if (i == 1) {
+        previousIncome = pnl.totalIncome();
+      } else if (i == 0) {
+        currentIncome = pnl.totalIncome();
+      }
+    }
+
+    // Create sparkline chart
+    SparklineChart chart = new SparklineChart(incomeData);
+    chart.setBarColor("var(--lumo-success-color)");
+    chart.setShowLabels(true);
+    chart.setShowValues(false);
+    chart.setBarWidth(32);
+    chart.setMaxHeight(60);
+    chart.setNumberFormat(currencyFormat);
+
+    content.add(chart);
+
+    // Add trend indicator comparing current month to previous
+    if (currentIncome != null && previousIncome != null) {
+      HorizontalLayout trendRow = new HorizontalLayout();
+      trendRow.setAlignItems(FlexComponent.Alignment.CENTER);
+      trendRow.setSpacing(true);
+      trendRow.getStyle().set("margin-top", "var(--lumo-space-s)");
+
+      Span trendLabel = new Span("vs last month:");
+      trendLabel.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+      Span trendIndicator = SparklineChart.createTrendIndicator(currentIncome, previousIncome);
+
+      trendRow.add(trendLabel, trendIndicator);
+      content.add(trendRow);
+    }
+
+    // Period info
+    Paragraph period = new Paragraph("Last 6 months");
     period
         .getStyle()
         .set("color", "var(--lumo-secondary-text-color)")

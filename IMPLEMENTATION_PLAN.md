@@ -42,6 +42,7 @@
 - **Phase 34 Balance-Forward Statements COMPLETE** - Tag: 0.4.6
 - **Phase 35 Contact Tax Override Auto-Population COMPLETE** - Tag: 0.4.7
 - **Phase 36 Quality Tooling & Keyboard Shortcuts COMPLETE** - Tag: 0.4.8
+- **Phase 37 KPI & Income Trend Charting COMPLETE** - Tag: 0.4.9
 - All 150 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, InvitationServiceTest: 18, SalesInvoiceServiceTest: 11, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation
 - Database configured: H2 for development, PostgreSQL for production
@@ -1020,6 +1021,32 @@ Per specs, Release 1 must deliver:
 - [x] All 150 tests passing
 - [x] No forbidden markers
 
+### Phase 37: KPI & Income Trend Charting (COMPLETE) - Tag: 0.4.9
+- [x] SparklineChart component (spec 12, spec 13)
+  - Created reusable SparklineChart component in ui/components/
+  - CSS-based bar chart visualization without external charting library
+  - Supports customizable bar color, width, height
+  - Supports negative values with baseline positioning
+  - Shows labels below bars and optional values above bars
+  - Tooltip on hover shows full value
+  - Compact number formatting (1.2K, 3.5M)
+  - createTrendIndicator() static helper for showing percentage change with arrow
+- [x] KPI trend visualization in KPIsView (spec 12 acceptance criteria)
+  - Added trend chart section to KPI detail panel
+  - Shows sparkline chart of KPI values across fiscal year periods
+  - Values sorted chronologically (oldest to newest)
+  - Color-coded based on KPI unit type ($ = green, % = primary)
+  - Trend indicator comparing latest vs previous period
+  - "vs previous period" label with percentage change
+- [x] Income Trend dashboard tile (spec 13)
+  - New "Income Trend" tile showing income over last 6 months
+  - Sparkline visualization of monthly income
+  - Trend indicator comparing current month vs previous month
+  - Respects user security level for account filtering
+- [x] Dashboard now has 6 tiles: Cash Balance, This Month, Income Trend, GST Estimate, Overdue Receivables, Overdue Payables
+- [x] All 150 tests passing
+- [x] No forbidden markers
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -1084,6 +1111,8 @@ Per specs, Release 1 must deliver:
 - Vaadin 25 keyboard shortcuts use Shortcuts.addShortcutListener(component, command, key, modifiers) with component as lifecycle owner - NOT ShortcutRegistration.setLifecycleOwner() which is private
 - Views can handle query parameters via BeforeEnterObserver.beforeEnter() with event.getLocation().getQueryParameters()
 - Google Java Format via Spotless changes all existing code formatting - run spotless:apply before committing formatted changes
+- Vaadin Charts requires commercial license; for open source use SparklineChart component (CSS-based) or ApexCharts-flow addon (Apache 2.0 licensed, but may need version matching for Vaadin 25)
+- SparklineChart provides lightweight charting without external dependencies using CSS flexbox and styled divs
 
 ## Technical Notes
 - Build: `./mvnw compile`
