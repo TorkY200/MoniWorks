@@ -367,9 +367,10 @@ public class ReportsView extends VerticalLayout {
 
     try {
       Company company = companyContextService.getCurrentCompany();
+      int securityLevel = companyContextService.getCurrentSecurityLevel();
       TrialBalance report =
           reportingService.generateTrialBalance(
-              company, startDatePicker.getValue(), endDatePicker.getValue());
+              company, startDatePicker.getValue(), endDatePicker.getValue(), securityLevel);
 
       displayTrialBalance(report);
     } catch (Exception e) {
@@ -471,11 +472,16 @@ public class ReportsView extends VerticalLayout {
 
     try {
       Company company = companyContextService.getCurrentCompany();
+      int securityLevel = companyContextService.getCurrentSecurityLevel();
       Department department = plDepartmentFilter.getValue(); // null means all departments
 
       ProfitAndLoss report =
           reportingService.generateProfitAndLoss(
-              company, startDatePicker.getValue(), endDatePicker.getValue(), department);
+              company,
+              startDatePicker.getValue(),
+              endDatePicker.getValue(),
+              department,
+              securityLevel);
 
       displayProfitAndLoss(report);
     } catch (Exception e) {
@@ -616,8 +622,9 @@ public class ReportsView extends VerticalLayout {
 
     try {
       Company company = companyContextService.getCurrentCompany();
+      int securityLevel = companyContextService.getCurrentSecurityLevel();
       BalanceSheet report =
-          reportingService.generateBalanceSheet(company, asOfDatePicker.getValue());
+          reportingService.generateBalanceSheet(company, asOfDatePicker.getValue(), securityLevel);
 
       displayBalanceSheet(report);
     } catch (Exception e) {
@@ -1168,12 +1175,18 @@ public class ReportsView extends VerticalLayout {
 
     try {
       Company company = companyContextService.getCurrentCompany();
+      int securityLevel = companyContextService.getCurrentSecurityLevel();
       Budget budget = bvaBudgetSelect.getValue();
       Department department = bvaDepartmentFilter.getValue(); // null means all departments
 
       BudgetVsActual report =
           reportingService.generateBudgetVsActual(
-              company, budget, startDatePicker.getValue(), endDatePicker.getValue(), department);
+              company,
+              budget,
+              startDatePicker.getValue(),
+              endDatePicker.getValue(),
+              department,
+              securityLevel);
 
       displayBudgetVsActual(report);
     } catch (Exception e) {
@@ -1677,7 +1690,9 @@ public class ReportsView extends VerticalLayout {
 
     try {
       Company company = companyContextService.getCurrentCompany();
-      CashflowStatement report = reportingService.generateCashflow(company, startDate, endDate);
+      int securityLevel = companyContextService.getCurrentSecurityLevel();
+      CashflowStatement report =
+          reportingService.generateCashflow(company, startDate, endDate, securityLevel);
       displayCashflow(report);
     } catch (Exception e) {
       Notification.show(
@@ -1921,6 +1936,17 @@ public class ReportsView extends VerticalLayout {
    */
   private void openLedgerDrilldownDialog(
       Account account, LocalDate startDate, LocalDate endDate, Department department) {
+    // Security check: verify user has access to this account's security level
+    int userSecurityLevel = companyContextService.getCurrentSecurityLevel();
+    if (account.getSecurityLevel() != null && account.getSecurityLevel() > userSecurityLevel) {
+      Notification.show(
+              "Access denied: insufficient security level for this account",
+              3000,
+              Notification.Position.MIDDLE)
+          .addThemeVariants(NotificationVariant.LUMO_ERROR);
+      return;
+    }
+
     Dialog dialog = new Dialog();
     dialog.setHeaderTitle("Ledger Entries: " + account.getCode() + " - " + account.getName());
     dialog.setWidth("900px");

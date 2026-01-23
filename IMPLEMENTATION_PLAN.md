@@ -68,12 +68,13 @@
 - **Phase 61 Follow-up Reminders Dashboard Tile COMPLETE** - Tag: 0.7.3
 - **Phase 62 Allocation Rule Counter-Party Matching COMPLETE** - Tag: 0.7.4
 - **Phase 63 Bulk Email Role Filtering COMPLETE** - Tag: 0.7.5
-- All 263 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 32, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21)
+- **Phase 64 Security Level Filtering & KPI CSV Import COMPLETE** - Tag: 0.7.6
+- All 279 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 32, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21, KPIImportServiceTest: 16)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
 - Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql, V14__statement_runs.sql, V15__additional_permissions.sql, V16__user_security_level.sql, V17__user_invitations.sql, V18__credit_notes.sql, V19__reconciliation_match.sql, V20__ledger_entry_reconciliation.sql, V21__allocation_rule_amount_range.sql, V22__debit_notes.sql, V23__reversal_link.sql, V24__clerk_roles.sql, V25__allocation_rule_counter_party.sql
 - All repository interfaces created (42 repositories)
-- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService, SalesInvoiceService, ReceivableAllocationService, SupplierBillService, PayableAllocationService, PaymentRunService, RemittanceAdviceService, DepartmentService, BudgetService, KPIService, RecurringTemplateService, ReportExportService, GlobalSearchService, SavedViewService, EmailService, InvoicePdfService, StatementService, RoleService, PermissionService, InvitationService, TransactionImportService
+- Full service layer: CompanyService, AccountService, TransactionService, PostingService, ReportingService, UserService, AuditService, CompanyContextService, TaxCodeService, FiscalYearService, BankImportService, TaxCalculationService, TaxReturnService, AttachmentService, ContactService, ProductService, SalesInvoiceService, ReceivableAllocationService, SupplierBillService, PayableAllocationService, PaymentRunService, RemittanceAdviceService, DepartmentService, BudgetService, KPIService, KPIImportService, RecurringTemplateService, ReportExportService, GlobalSearchService, SavedViewService, EmailService, InvoicePdfService, StatementService, RoleService, PermissionService, InvitationService, TransactionImportService
 - Full UI views: MainLayout, LoginView, DashboardView, TransactionsView, AccountsView, PeriodsView, TaxCodesView, ReportsView, BankReconciliationView, GstReturnsView, AuditEventsView, ContactsView, ProductsView, SalesInvoicesView, SupplierBillsView, DepartmentsView, BudgetsView, KPIsView, RecurringTemplatesView, GlobalSearchView, StatementRunsView, UsersView, AcceptInvitationView, RolesView, CompanySettingsView
 - Security configuration with SecurityConfig and UserDetailsServiceImpl (using VaadinSecurityConfigurer API)
 
@@ -1680,6 +1681,53 @@ Per specs, Release 1 must deliver:
 - [x] All 263 tests passing
 - [x] No forbidden markers
 
+### Phase 64: Security Level Filtering & KPI CSV Import (COMPLETE) - Tag: 0.7.6
+- [x] Security level filtering added to all financial reports in ReportsView (spec 02)
+  - Trial Balance report respects user's account security level
+  - Profit & Loss report filters accounts by security level
+  - Balance Sheet report filters accounts by security level
+  - Budget vs Actual report filters accounts by security level
+  - Cashflow report filters bank accounts by security level
+  - Uses companyContextService.getCurrentSecurityLevel() for consistent filtering
+- [x] Security level check added to ledger drilldown dialogs (defense-in-depth)
+  - Drilldown dialogs verify account security level before displaying entries
+  - Prevents access to restricted account details through report drilldowns
+  - Consistent security enforcement across all report drill-through paths
+- [x] KPIImportService for CSV import of KPI values (spec 12 completion)
+  - Flexible column mapping with case-insensitive header matching
+  - Required columns: kpi_code, period_date, value
+  - Multiple date format support (YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY, etc.)
+  - Value parsing with comma removal and decimal support
+  - KPI code validation against company KPIs
+  - Period lookup by date (finds period containing the given date)
+- [x] Import and update modes for KPI values
+  - Import only mode skips existing KPI values (same KPI/period combination)
+  - Update mode updates existing KPI values with new values
+  - Preview mode to see changes before committing
+- [x] Import UI in KPIsView
+  - "Import CSV" button in KPI detail panel
+  - Import dialog with instructions and sample CSV download
+  - File upload with CSV format validation
+  - Preview of import results before committing
+  - "Update existing values" checkbox option
+  - Error and warning display
+- [x] KPIImportServiceTest with 16 unit tests covering:
+  - Valid CSV import
+  - Missing required columns (kpi_code, period_date, value)
+  - Empty file handling
+  - KPI not found
+  - Period not found
+  - Invalid date format
+  - Invalid value format
+  - Skip existing values mode
+  - Update existing values mode
+  - Multiple date formats
+  - Value with commas
+  - Preview mode without saving
+  - Sample CSV content generation
+- [x] All 279 tests passing
+- [x] No forbidden markers
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -1783,6 +1831,8 @@ Per specs, Release 1 must deliver:
 - Audit event retention policy configuration (spec 14) - Phase 60
 - Allocation rule counter-party matching (spec 05) - Phase 62
 - Bulk email role filtering (spec 07) - Phase 63
+- Security level filtering for all financial reports (spec 02) - Phase 64
+- KPI CSV Import (spec 12 completion) - Phase 64
 
 ## Technical Notes
 - Build: `./mvnw compile`

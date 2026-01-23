@@ -1,6 +1,9 @@
 package com.example.application.ui.views;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.time.LocalDate;
@@ -12,6 +15,7 @@ import java.util.Locale;
 
 import com.example.application.domain.*;
 import com.example.application.service.*;
+import com.example.application.service.KPIImportService.ImportResult;
 import com.example.application.ui.MainLayout;
 import com.example.application.ui.components.SparklineChart;
 import com.vaadin.flow.component.button.Button;
@@ -22,6 +26,7 @@ import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
+import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
@@ -37,8 +42,11 @@ import com.vaadin.flow.component.splitlayout.SplitLayout;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.component.upload.Upload;
+import com.vaadin.flow.component.upload.receivers.MemoryBuffer;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.StreamResource;
 
 import jakarta.annotation.security.PermitAll;
 
@@ -54,6 +62,7 @@ public class KPIsView extends VerticalLayout {
   private final KPIService kpiService;
   private final CompanyContextService companyContextService;
   private final FiscalYearService fiscalYearService;
+  private final KPIImportService kpiImportService;
 
   private final Grid<KPI> kpiGrid = new Grid<>();
   private final Grid<KPIValue> valueGrid = new Grid<>();
@@ -68,10 +77,12 @@ public class KPIsView extends VerticalLayout {
   public KPIsView(
       KPIService kpiService,
       CompanyContextService companyContextService,
-      FiscalYearService fiscalYearService) {
+      FiscalYearService fiscalYearService,
+      KPIImportService kpiImportService) {
     this.kpiService = kpiService;
     this.companyContextService = companyContextService;
     this.fiscalYearService = fiscalYearService;
+    this.kpiImportService = kpiImportService;
 
     addClassName("kpis-view");
     setSizeFull();
@@ -148,7 +159,13 @@ public class KPIsView extends VerticalLayout {
     defaultsButton.addClickListener(e -> createDefaultKPIs());
     defaultsButton.getElement().setAttribute("title", "Create default KPIs");
 
-    HorizontalLayout actions = new HorizontalLayout(addButton, defaultsButton, refreshButton);
+    Button importBtn = new Button("Import CSV", VaadinIcon.UPLOAD.create());
+    importBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+    importBtn.addClickListener(e -> openImportDialog());
+    importBtn.getElement().setAttribute("title", "Import KPI values from CSV");
+
+    HorizontalLayout actions =
+        new HorizontalLayout(addButton, defaultsButton, importBtn, refreshButton);
     actions.setAlignItems(FlexComponent.Alignment.BASELINE);
 
     HorizontalLayout toolbar = new HorizontalLayout(title, actions);
@@ -642,5 +659,180 @@ public class KPIsView extends VerticalLayout {
               "Error creating defaults: " + ex.getMessage(), 3000, Notification.Position.MIDDLE)
           .addThemeVariants(NotificationVariant.LUMO_ERROR);
     }
+  }
+
+  private void openImportDialog() {
+    Company company = companyContextService.getCurrentCompany();
+
+    // Check if KPIs exist
+    List<KPI> kpis = kpiService.findByCompany(company);
+    if (kpis.isEmpty()) {
+      Notification.show(
+              "Please create KPIs first before importing values",
+              3000,
+              Notification.Position.MIDDLE)
+          .addThemeVariants(NotificationVariant.LUMO_ERROR);
+      return;
+    }
+
+    Dialog dialog = new Dialog();
+    dialog.setHeaderTitle("Import KPI Values from CSV");
+    dialog.setWidth("600px");
+
+    VerticalLayout layout = new VerticalLayout();
+    layout.setPadding(false);
+    layout.setSpacing(true);
+
+    // Instructions
+    Span instructions =
+        new Span(
+            "Upload a CSV file with KPI values. Required columns: kpi_code, "
+                + "period_date (YYYY-MM-DD), value. Optional: notes. "
+                + "The period_date should be any date within the period (e.g., 2024-07-01 for July 2024).");
+    instructions
+        .getStyle()
+        .set("color", "var(--lumo-secondary-text-color)")
+        .set("font-size", "var(--lumo-font-size-s)");
+
+    // Download sample CSV link
+    String sampleCsv = kpiImportService.getSampleCsvContent();
+    StreamResource sampleResource =
+        new StreamResource(
+            "kpi_values_sample.csv",
+            () -> new ByteArrayInputStream(sampleCsv.getBytes(StandardCharsets.UTF_8)));
+    sampleResource.setContentType("text/csv");
+    Anchor downloadSample = new Anchor(sampleResource, "Download sample CSV");
+    downloadSample.getElement().setAttribute("download", true);
+    downloadSample.getStyle().set("font-size", "var(--lumo-font-size-s)");
+
+    // Update existing checkbox
+    Checkbox updateExisting = new Checkbox("Update existing KPI values");
+    updateExisting.setValue(true);
+    updateExisting.setHelperText("If unchecked, existing values (same KPI/period) will be skipped");
+
+    // File upload
+    MemoryBuffer buffer = new MemoryBuffer();
+    Upload upload = new Upload(buffer);
+    upload.setAcceptedFileTypes(".csv", "text/csv");
+    upload.setMaxFiles(1);
+    upload.setDropLabel(new Span("Drop CSV file here or click to upload"));
+    upload.setWidthFull();
+
+    // Preview/result area
+    VerticalLayout resultArea = new VerticalLayout();
+    resultArea.setPadding(false);
+    resultArea.setVisible(false);
+
+    // Import button
+    Button importButton = new Button("Import");
+    importButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+    importButton.setEnabled(false);
+
+    // Store the uploaded stream for import
+    final byte[][] uploadedBytes = {null};
+
+    upload.addSucceededListener(
+        event -> {
+          try {
+            uploadedBytes[0] = buffer.getInputStream().readAllBytes();
+
+            ImportResult preview =
+                kpiImportService.previewImport(
+                    new ByteArrayInputStream(uploadedBytes[0]), company, updateExisting.getValue());
+
+            resultArea.removeAll();
+            if (preview.success()) {
+              Span previewText =
+                  new Span(
+                      String.format(
+                          "Preview: %d values to import, %d to update, %d to skip",
+                          preview.imported(), preview.updated(), preview.skipped()));
+              previewText.getStyle().set("color", "var(--lumo-success-text-color)");
+              resultArea.add(previewText);
+
+              if (!preview.warnings().isEmpty()) {
+                for (String warning : preview.warnings()) {
+                  Span warningSpan = new Span(warning);
+                  warningSpan
+                      .getStyle()
+                      .set("color", "var(--lumo-warning-text-color)")
+                      .set("font-size", "var(--lumo-font-size-s)");
+                  resultArea.add(warningSpan);
+                }
+              }
+
+              importButton.setEnabled(preview.imported() > 0 || preview.updated() > 0);
+            } else {
+              for (String error : preview.errors()) {
+                Span errorSpan = new Span(error);
+                errorSpan.getStyle().set("color", "var(--lumo-error-text-color)");
+                resultArea.add(errorSpan);
+              }
+              importButton.setEnabled(false);
+            }
+            resultArea.setVisible(true);
+          } catch (IOException e) {
+            Notification.show(
+                    "Error reading file: " + e.getMessage(), 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+          }
+        });
+
+    upload.addFileRejectedListener(
+        event -> {
+          Notification.show(
+                  "Invalid file: " + event.getErrorMessage(), 3000, Notification.Position.MIDDLE)
+              .addThemeVariants(NotificationVariant.LUMO_ERROR);
+        });
+
+    importButton.addClickListener(
+        e -> {
+          if (uploadedBytes[0] == null) {
+            Notification.show("Please upload a file first", 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            return;
+          }
+
+          try {
+            User user = companyContextService.getCurrentUser();
+            ImportResult result =
+                kpiImportService.importKPIValues(
+                    new ByteArrayInputStream(uploadedBytes[0]),
+                    company,
+                    user,
+                    updateExisting.getValue());
+
+            if (result.success()) {
+              Notification.show(
+                      String.format(
+                          "Import complete: %d imported, %d updated, %d skipped",
+                          result.imported(), result.updated(), result.skipped()),
+                      5000,
+                      Notification.Position.BOTTOM_START)
+                  .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+              dialog.close();
+              loadKPIValues();
+            } else {
+              resultArea.removeAll();
+              for (String error : result.errors()) {
+                Span errorSpan = new Span(error);
+                errorSpan.getStyle().set("color", "var(--lumo-error-text-color)");
+                resultArea.add(errorSpan);
+              }
+            }
+          } catch (IOException ex) {
+            Notification.show(
+                    "Import failed: " + ex.getMessage(), 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+          }
+        });
+
+    Button cancelButton = new Button("Cancel", e -> dialog.close());
+
+    layout.add(instructions, downloadSample, updateExisting, upload, resultArea);
+
+    dialog.add(layout);
+    dialog.getFooter().add(cancelButton, importButton);
+    dialog.open();
   }
 }
