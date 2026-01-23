@@ -46,6 +46,7 @@
 - **Phase 38 Bank Reconciliation Status Report COMPLETE** - Tag: 0.5.0
 - **Phase 39 SMTP Email Sending COMPLETE** - Tag: 0.5.1
 - **Phase 40 Transfer Transactions & Reconciliation Audit Trail COMPLETE** - Tag: 0.5.2
+- **Phase 41 Complete Bank Reconciliation Integration COMPLETE** - Tag: 0.5.3
 - All 152 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 11, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
@@ -1132,6 +1133,24 @@ Per specs, Release 1 must deliver:
   - Added markReconciled(), markManuallyCleared(), and unreconcile() methods
   - Created V20__ledger_entry_reconciliation.sql migration
   - Added repository queries for unreconciled entries by account
+- [x] All 152 tests passing
+- [x] No forbidden markers
+
+### Phase 41: Complete Bank Reconciliation Integration (COMPLETE) - Tag: 0.5.3
+- [x] LedgerEntry reconciliation integration (spec 05)
+  - matchItem() now marks affected LedgerEntry records as reconciled
+  - unmatchItem() now unreconciles the LedgerEntry records
+  - Ledger entries affecting the bank account are identified and marked
+  - Added LedgerEntryRepository dependency to BankImportService
+- [x] Unmatch UI in BankReconciliationView (spec 05)
+  - Added Unmatch button for matched/created bank feed items
+  - Shows matched transaction info in detail panel
+  - Added Un-ignore button for ignored items to reset status
+  - Detail panel adapts buttons based on item status (NEW, MATCHED, CREATED, IGNORED)
+- [x] BankImportService enhancements (spec 05)
+  - Added unignoreItem() method to reset ignored items to NEW
+  - Enhanced matchItem() with ledger entry reconciliation count logging
+  - Enhanced unmatchItem() with ledger entry unreconcile count logging
 - [x] All 152 tests passing
 - [x] No forbidden markers
 

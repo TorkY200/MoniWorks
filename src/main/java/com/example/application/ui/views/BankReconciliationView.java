@@ -263,27 +263,65 @@ public class BankReconciliationView extends VerticalLayout {
       infoSection.add(suggestion);
     }
 
-    // Action buttons
+    // Action buttons - different depending on whether item is matched or not
     H4 actionsTitle = new H4("Actions");
-
-    Button createTransactionBtn = new Button("Create Transaction", VaadinIcon.PLUS.create());
-    createTransactionBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-    createTransactionBtn.setWidthFull();
-    createTransactionBtn.addClickListener(
-        e -> openCreateTransactionDialog(item, suggestedRule.orElse(null)));
-
-    Button matchBtn = new Button("Match to Existing", VaadinIcon.LINK.create());
-    matchBtn.setWidthFull();
-    matchBtn.addClickListener(e -> openMatchDialog(item));
-
-    Button ignoreBtn = new Button("Ignore", VaadinIcon.BAN.create());
-    ignoreBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_ERROR);
-    ignoreBtn.setWidthFull();
-    ignoreBtn.addClickListener(e -> ignoreItem(item));
-
-    VerticalLayout actionsLayout = new VerticalLayout(createTransactionBtn, matchBtn, ignoreBtn);
+    VerticalLayout actionsLayout = new VerticalLayout();
     actionsLayout.setPadding(false);
     actionsLayout.setSpacing(true);
+
+    boolean isMatched =
+        item.getStatus() == FeedItemStatus.MATCHED
+            || item.getStatus() == FeedItemStatus.CREATED
+            || item.getMatchedTransaction() != null;
+
+    if (isMatched) {
+      // Show matched transaction info
+      Transaction matched = item.getMatchedTransaction();
+      if (matched != null) {
+        infoSection.add(
+            createInfoRow(
+                "Matched To",
+                matched.getType().name()
+                    + " #"
+                    + matched.getId()
+                    + " - "
+                    + matched.getDescription()));
+      }
+
+      // Unmatch button for matched items
+      Button unmatchBtn = new Button("Unmatch", VaadinIcon.UNLINK.create());
+      unmatchBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_ERROR);
+      unmatchBtn.setWidthFull();
+      unmatchBtn.addClickListener(e -> unmatchItem(item));
+      actionsLayout.add(unmatchBtn);
+
+    } else if (item.getStatus() == FeedItemStatus.IGNORED) {
+      // Un-ignore button for ignored items
+      Button unignoreBtn = new Button("Un-ignore (Make New)", VaadinIcon.REFRESH.create());
+      unignoreBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+      unignoreBtn.setWidthFull();
+      unignoreBtn.addClickListener(e -> unignoreItem(item));
+      actionsLayout.add(unignoreBtn);
+
+    } else {
+      // Normal actions for new items
+      Button createTransactionBtn = new Button("Create Transaction", VaadinIcon.PLUS.create());
+      createTransactionBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+      createTransactionBtn.setWidthFull();
+      createTransactionBtn.addClickListener(
+          e -> openCreateTransactionDialog(item, suggestedRule.orElse(null)));
+
+      Button matchBtn = new Button("Match to Existing", VaadinIcon.LINK.create());
+      matchBtn.setWidthFull();
+      matchBtn.addClickListener(e -> openMatchDialog(item));
+
+      Button ignoreBtn = new Button("Ignore", VaadinIcon.BAN.create());
+      ignoreBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_ERROR);
+      ignoreBtn.setWidthFull();
+      ignoreBtn.addClickListener(e -> ignoreItem(item));
+
+      actionsLayout.add(createTransactionBtn, matchBtn, ignoreBtn);
+    }
 
     detailPanel.add(detailTitle, infoSection, actionsTitle, actionsLayout);
   }
@@ -654,6 +692,39 @@ public class BankReconciliationView extends VerticalLayout {
       bankImportService.ignoreItem(item);
 
       Notification.show("Item ignored", 3000, Notification.Position.BOTTOM_START)
+          .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+
+      loadFeedItems();
+      showEmptyDetailPanel();
+
+    } catch (Exception e) {
+      Notification.show("Error: " + e.getMessage(), 3000, Notification.Position.MIDDLE)
+          .addThemeVariants(NotificationVariant.LUMO_ERROR);
+    }
+  }
+
+  private void unmatchItem(BankFeedItem item) {
+    try {
+      User currentUser = companyContextService.getCurrentUser();
+      bankImportService.unmatchItem(item, currentUser);
+
+      Notification.show("Item unmatched successfully", 3000, Notification.Position.BOTTOM_START)
+          .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+
+      loadFeedItems();
+      showEmptyDetailPanel();
+
+    } catch (Exception e) {
+      Notification.show("Error: " + e.getMessage(), 3000, Notification.Position.MIDDLE)
+          .addThemeVariants(NotificationVariant.LUMO_ERROR);
+    }
+  }
+
+  private void unignoreItem(BankFeedItem item) {
+    try {
+      bankImportService.unignoreItem(item);
+
+      Notification.show("Item status reset to NEW", 3000, Notification.Position.BOTTOM_START)
           .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
 
       loadFeedItems();

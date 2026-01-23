@@ -36,18 +36,21 @@ public class BankImportService {
   private final AccountRepository accountRepository;
   private final AllocationRuleRepository ruleRepository;
   private final ReconciliationMatchRepository reconciliationMatchRepository;
+  private final LedgerEntryRepository ledgerEntryRepository;
 
   public BankImportService(
       BankStatementImportRepository importRepository,
       BankFeedItemRepository feedItemRepository,
       AccountRepository accountRepository,
       AllocationRuleRepository ruleRepository,
-      ReconciliationMatchRepository reconciliationMatchRepository) {
+      ReconciliationMatchRepository reconciliationMatchRepository,
+      LedgerEntryRepository ledgerEntryRepository) {
     this.importRepository = importRepository;
     this.feedItemRepository = feedItemRepository;
     this.accountRepository = accountRepository;
     this.ruleRepository = ruleRepository;
     this.reconciliationMatchRepository = reconciliationMatchRepository;
+    this.ledgerEntryRepository = ledgerEntryRepository;
   }
 
   /**
@@ -451,7 +454,7 @@ public class BankImportService {
 
   /**
    * Marks a feed item as matched to a transaction. Creates a ReconciliationMatch record for audit
-   * trail per spec 05.
+   * trail and marks the affected ledger entries as reconciled per spec 05.
    *
    * @param item The bank feed item to match
    * @param transaction The transaction to match to
@@ -471,12 +474,25 @@ public class BankImportService {
         new ReconciliationMatch(company, item, transaction, matchType, user);
     reconciliationMatchRepository.save(match);
 
+    // Mark ledger entries affecting the bank account as reconciled (per spec 05)
+    Account bankAccount = item.getBankStatementImport().getAccount();
+    List<LedgerEntry> ledgerEntries = ledgerEntryRepository.findByTransaction(transaction);
+    int reconciledCount = 0;
+    for (LedgerEntry entry : ledgerEntries) {
+      if (entry.getAccount().getId().equals(bankAccount.getId())) {
+        entry.markReconciled(item, user);
+        ledgerEntryRepository.save(entry);
+        reconciledCount++;
+      }
+    }
+
     log.info(
-        "Matched bank feed item {} to transaction {} ({} match by {})",
+        "Matched bank feed item {} to transaction {} ({} match by {}, {} ledger entries reconciled)",
         item.getId(),
         transaction.getId(),
         matchType,
-        user != null ? user.getEmail() : "system");
+        user != null ? user.getEmail() : "system",
+        reconciledCount);
   }
 
   /**
@@ -501,12 +517,21 @@ public class BankImportService {
 
   /**
    * Unmatches a previously matched bank feed item. The ReconciliationMatch record is kept for audit
-   * purposes but marked as inactive.
+   * purposes but marked as inactive. Also unreconciles the affected ledger entries.
    *
    * @param item The bank feed item to unmatch
    * @param user The user performing the unmatch
    */
   public void unmatchItem(BankFeedItem item, User user) {
+    // Unreconcile ledger entries that were marked as reconciled against this feed item
+    List<LedgerEntry> reconciledEntries =
+        ledgerEntryRepository.findByReconciledBankFeedItemId(item.getId());
+    int unreconciledCount = reconciledEntries.size();
+    for (LedgerEntry entry : reconciledEntries) {
+      entry.unreconcile();
+      ledgerEntryRepository.save(entry);
+    }
+
     // Find and deactivate the active reconciliation match
     reconciliationMatchRepository
         .findByBankFeedItemAndActiveTrue(item)
@@ -522,15 +547,24 @@ public class BankImportService {
     feedItemRepository.save(item);
 
     log.info(
-        "Unmatched bank feed item {} by {}",
+        "Unmatched bank feed item {} by {} ({} ledger entries unreconciled)",
         item.getId(),
-        user != null ? user.getEmail() : "system");
+        user != null ? user.getEmail() : "system",
+        unreconciledCount);
   }
 
   /** Marks a feed item as ignored. */
   public void ignoreItem(BankFeedItem item) {
     item.setStatus(FeedItemStatus.IGNORED);
     feedItemRepository.save(item);
+    log.info("Ignored bank feed item {}", item.getId());
+  }
+
+  /** Un-ignores a feed item, resetting it to NEW status. */
+  public void unignoreItem(BankFeedItem item) {
+    item.setStatus(FeedItemStatus.NEW);
+    feedItemRepository.save(item);
+    log.info("Un-ignored bank feed item {}, status reset to NEW", item.getId());
   }
 
   /** Finds the active reconciliation match for a bank feed item. */
