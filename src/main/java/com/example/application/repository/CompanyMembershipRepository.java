@@ -44,7 +44,10 @@ public interface CompanyMembershipRepository extends JpaRepository<CompanyMember
   List<CompanyMembership> findActiveByCompanyId(@Param("companyId") Long companyId);
 
   @Query(
-      "SELECT cm FROM CompanyMembership cm WHERE cm.company = :company "
+      "SELECT cm FROM CompanyMembership cm "
+          + "JOIN FETCH cm.user "
+          + "JOIN FETCH cm.role "
+          + "WHERE cm.company = :company "
           + "AND cm.status = com.example.application.domain.CompanyMembership.MembershipStatus.ACTIVE")
   List<CompanyMembership> findActiveByCompany(@Param("company") Company company);
 

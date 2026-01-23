@@ -24,8 +24,15 @@ public interface UserInvitationRepository extends JpaRepository<UserInvitation, 
       "SELECT i FROM UserInvitation i WHERE i.email = :email AND i.status = 'PENDING' AND i.expiresAt > :now")
   List<UserInvitation> findPendingByEmail(@Param("email") String email, @Param("now") Instant now);
 
-  /** Find all invitations for a company. */
-  List<UserInvitation> findByCompanyOrderByCreatedAtDesc(Company company);
+  /** Find all invitations for a company with eager loading of related entities. */
+  @Query(
+      "SELECT i FROM UserInvitation i "
+          + "JOIN FETCH i.role "
+          + "LEFT JOIN FETCH i.invitedBy "
+          + "LEFT JOIN FETCH i.acceptedUser "
+          + "WHERE i.company = :company "
+          + "ORDER BY i.createdAt DESC")
+  List<UserInvitation> findByCompanyOrderByCreatedAtDesc(@Param("company") Company company);
 
   /** Find invitations for a company with a specific status. */
   List<UserInvitation> findByCompanyAndStatusOrderByCreatedAtDesc(
