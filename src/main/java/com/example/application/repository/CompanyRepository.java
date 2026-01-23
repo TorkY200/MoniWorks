@@ -1,12 +1,13 @@
 package com.example.application.repository;
 
-import com.example.application.domain.Company;
+import java.util.Optional;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import java.util.Optional;
+import com.example.application.domain.Company;
 
 @Repository
 public interface CompanyRepository extends JpaRepository<Company, Long> {
-    Optional<Company> findByName(String name);
+  Optional<Company> findByName(String name);
 }

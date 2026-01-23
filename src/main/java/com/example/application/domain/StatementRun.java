@@ -1,198 +1,197 @@
 package com.example.application.domain;
 
-import jakarta.persistence.*;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.time.LocalDate;
 
+import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
 /**
- * Tracks a batch statement generation run.
- * Stores criteria used and references the generated output.
- * Supports filtering by customer, date range, and minimum balance.
+ * Tracks a batch statement generation run. Stores criteria used and references the generated
+ * output. Supports filtering by customer, date range, and minimum balance.
  */
 @Entity
 @Table(name = "statement_run")
 public class StatementRun {
 
-    public enum RunStatus {
-        PENDING,    // Created but not yet processed
-        PROCESSING, // Currently generating statements
-        COMPLETED,  // All statements generated successfully
-        FAILED      // Generation failed
+  public enum RunStatus {
+    PENDING, // Created but not yet processed
+    PROCESSING, // Currently generating statements
+    COMPLETED, // All statements generated successfully
+    FAILED // Generation failed
+  }
+
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
+
+  @NotNull
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "company_id", nullable = false)
+  private Company company;
+
+  @NotNull
+  @Column(name = "run_date", nullable = false)
+  private LocalDate runDate;
+
+  @NotNull
+  @Column(name = "as_of_date", nullable = false)
+  private LocalDate asOfDate;
+
+  @NotNull
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false, length = 20)
+  private RunStatus status = RunStatus.PENDING;
+
+  // Filter criteria - stored as JSON for flexibility
+  @Size(max = 4000)
+  @Column(name = "criteria_json", length = 4000)
+  private String criteriaJson;
+
+  // Number of statements generated
+  @Column(name = "statement_count")
+  private Integer statementCount;
+
+  // Reference to combined PDF output (if generated)
+  @Column(name = "output_attachment_id")
+  private Long outputAttachmentId;
+
+  // Error message if status is FAILED
+  @Size(max = 500)
+  @Column(name = "error_message", length = 500)
+  private String errorMessage;
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "created_by")
+  private User createdBy;
+
+  @Column(name = "created_at", nullable = false, updatable = false)
+  private Instant createdAt;
+
+  @Column(name = "completed_at")
+  private Instant completedAt;
+
+  @PrePersist
+  protected void onCreate() {
+    createdAt = Instant.now();
+    if (runDate == null) {
+      runDate = LocalDate.now();
     }
+  }
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  // Constructors
+  public StatementRun() {}
 
-    @NotNull
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id", nullable = false)
-    private Company company;
+  public StatementRun(Company company, LocalDate asOfDate) {
+    this.company = company;
+    this.asOfDate = asOfDate;
+    this.runDate = LocalDate.now();
+  }
 
-    @NotNull
-    @Column(name = "run_date", nullable = false)
-    private LocalDate runDate;
+  // Helper methods
+  public boolean isCompleted() {
+    return status == RunStatus.COMPLETED;
+  }
 
-    @NotNull
-    @Column(name = "as_of_date", nullable = false)
-    private LocalDate asOfDate;
+  public boolean isFailed() {
+    return status == RunStatus.FAILED;
+  }
 
-    @NotNull
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private RunStatus status = RunStatus.PENDING;
+  public boolean isPending() {
+    return status == RunStatus.PENDING;
+  }
 
-    // Filter criteria - stored as JSON for flexibility
-    @Size(max = 4000)
-    @Column(name = "criteria_json", length = 4000)
-    private String criteriaJson;
+  // Getters and Setters
+  public Long getId() {
+    return id;
+  }
 
-    // Number of statements generated
-    @Column(name = "statement_count")
-    private Integer statementCount;
+  public void setId(Long id) {
+    this.id = id;
+  }
 
-    // Reference to combined PDF output (if generated)
-    @Column(name = "output_attachment_id")
-    private Long outputAttachmentId;
+  public Company getCompany() {
+    return company;
+  }
 
-    // Error message if status is FAILED
-    @Size(max = 500)
-    @Column(name = "error_message", length = 500)
-    private String errorMessage;
+  public void setCompany(Company company) {
+    this.company = company;
+  }
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "created_by")
-    private User createdBy;
+  public LocalDate getRunDate() {
+    return runDate;
+  }
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
+  public void setRunDate(LocalDate runDate) {
+    this.runDate = runDate;
+  }
 
-    @Column(name = "completed_at")
-    private Instant completedAt;
+  public LocalDate getAsOfDate() {
+    return asOfDate;
+  }
 
-    @PrePersist
-    protected void onCreate() {
-        createdAt = Instant.now();
-        if (runDate == null) {
-            runDate = LocalDate.now();
-        }
-    }
+  public void setAsOfDate(LocalDate asOfDate) {
+    this.asOfDate = asOfDate;
+  }
 
-    // Constructors
-    public StatementRun() {
-    }
+  public RunStatus getStatus() {
+    return status;
+  }
 
-    public StatementRun(Company company, LocalDate asOfDate) {
-        this.company = company;
-        this.asOfDate = asOfDate;
-        this.runDate = LocalDate.now();
-    }
+  public void setStatus(RunStatus status) {
+    this.status = status;
+  }
 
-    // Helper methods
-    public boolean isCompleted() {
-        return status == RunStatus.COMPLETED;
-    }
+  public String getCriteriaJson() {
+    return criteriaJson;
+  }
 
-    public boolean isFailed() {
-        return status == RunStatus.FAILED;
-    }
+  public void setCriteriaJson(String criteriaJson) {
+    this.criteriaJson = criteriaJson;
+  }
 
-    public boolean isPending() {
-        return status == RunStatus.PENDING;
-    }
+  public Integer getStatementCount() {
+    return statementCount;
+  }
 
-    // Getters and Setters
-    public Long getId() {
-        return id;
-    }
+  public void setStatementCount(Integer statementCount) {
+    this.statementCount = statementCount;
+  }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+  public Long getOutputAttachmentId() {
+    return outputAttachmentId;
+  }
 
-    public Company getCompany() {
-        return company;
-    }
+  public void setOutputAttachmentId(Long outputAttachmentId) {
+    this.outputAttachmentId = outputAttachmentId;
+  }
 
-    public void setCompany(Company company) {
-        this.company = company;
-    }
+  public String getErrorMessage() {
+    return errorMessage;
+  }
 
-    public LocalDate getRunDate() {
-        return runDate;
-    }
+  public void setErrorMessage(String errorMessage) {
+    this.errorMessage = errorMessage;
+  }
 
-    public void setRunDate(LocalDate runDate) {
-        this.runDate = runDate;
-    }
+  public User getCreatedBy() {
+    return createdBy;
+  }
 
-    public LocalDate getAsOfDate() {
-        return asOfDate;
-    }
+  public void setCreatedBy(User createdBy) {
+    this.createdBy = createdBy;
+  }
 
-    public void setAsOfDate(LocalDate asOfDate) {
-        this.asOfDate = asOfDate;
-    }
+  public Instant getCreatedAt() {
+    return createdAt;
+  }
 
-    public RunStatus getStatus() {
-        return status;
-    }
+  public Instant getCompletedAt() {
+    return completedAt;
+  }
 
-    public void setStatus(RunStatus status) {
-        this.status = status;
-    }
-
-    public String getCriteriaJson() {
-        return criteriaJson;
-    }
-
-    public void setCriteriaJson(String criteriaJson) {
-        this.criteriaJson = criteriaJson;
-    }
-
-    public Integer getStatementCount() {
-        return statementCount;
-    }
-
-    public void setStatementCount(Integer statementCount) {
-        this.statementCount = statementCount;
-    }
-
-    public Long getOutputAttachmentId() {
-        return outputAttachmentId;
-    }
-
-    public void setOutputAttachmentId(Long outputAttachmentId) {
-        this.outputAttachmentId = outputAttachmentId;
-    }
-
-    public String getErrorMessage() {
-        return errorMessage;
-    }
-
-    public void setErrorMessage(String errorMessage) {
-        this.errorMessage = errorMessage;
-    }
-
-    public User getCreatedBy() {
-        return createdBy;
-    }
-
-    public void setCreatedBy(User createdBy) {
-        this.createdBy = createdBy;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    public Instant getCompletedAt() {
-        return completedAt;
-    }
-
-    public void setCompletedAt(Instant completedAt) {
-        this.completedAt = completedAt;
-    }
+  public void setCompletedAt(Instant completedAt) {
+    this.completedAt = completedAt;
+  }
 }

@@ -1,641 +1,681 @@
 package com.example.application.service;
 
-import com.example.application.domain.*;
-import com.example.application.domain.SalesInvoice.InvoiceStatus;
-import com.example.application.domain.SalesInvoice.InvoiceType;
-import com.example.application.repository.SalesInvoiceLineRepository;
-import com.example.application.repository.SalesInvoiceRepository;
-import com.example.application.repository.TaxCodeRepository;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.example.application.domain.*;
+import com.example.application.domain.SalesInvoice.InvoiceStatus;
+import com.example.application.domain.SalesInvoice.InvoiceType;
+import com.example.application.repository.SalesInvoiceLineRepository;
+import com.example.application.repository.SalesInvoiceRepository;
+import com.example.application.repository.TaxCodeRepository;
+
 /**
  * Service for managing sales invoices and credit notes (A/R).
  *
- * Key workflows:
- * 1. Create draft invoice → Add lines → Issue (post to ledger)
- * 2. Void invoice (reversal) for issued invoices
- * 3. Create credit note against an issued invoice
+ * <p>Key workflows: 1. Create draft invoice → Add lines → Issue (post to ledger) 2. Void invoice
+ * (reversal) for issued invoices 3. Create credit note against an issued invoice
  *
- * Issuing an invoice creates ledger entries:
- * - Debit AR control account (Asset)
- * - Credit income accounts (per line)
- * - Credit GST collected account (if applicable)
+ * <p>Issuing an invoice creates ledger entries: - Debit AR control account (Asset) - Credit income
+ * accounts (per line) - Credit GST collected account (if applicable)
  *
- * Issuing a credit note creates REVERSED entries:
- * - Credit AR control account (reduces receivable)
- * - Debit income accounts (reduces income)
- * - Debit GST collected (reduces tax liability)
+ * <p>Issuing a credit note creates REVERSED entries: - Credit AR control account (reduces
+ * receivable) - Debit income accounts (reduces income) - Debit GST collected (reduces tax
+ * liability)
  */
 @Service
 @Transactional
 public class SalesInvoiceService {
 
-    private final SalesInvoiceRepository invoiceRepository;
-    private final SalesInvoiceLineRepository lineRepository;
-    private final TaxCodeRepository taxCodeRepository;
-    private final AccountService accountService;
-    private final TransactionService transactionService;
-    private final PostingService postingService;
-    private final AuditService auditService;
+  private final SalesInvoiceRepository invoiceRepository;
+  private final SalesInvoiceLineRepository lineRepository;
+  private final TaxCodeRepository taxCodeRepository;
+  private final AccountService accountService;
+  private final TransactionService transactionService;
+  private final PostingService postingService;
+  private final AuditService auditService;
 
-    // Default account codes (should be configurable per company in future)
-    private static final String AR_ACCOUNT_CODE = "1200";  // Accounts Receivable
-    private static final String GST_COLLECTED_CODE = "2200"; // GST Collected liability
+  // Default account codes (should be configurable per company in future)
+  private static final String AR_ACCOUNT_CODE = "1200"; // Accounts Receivable
+  private static final String GST_COLLECTED_CODE = "2200"; // GST Collected liability
 
-    public SalesInvoiceService(SalesInvoiceRepository invoiceRepository,
-                               SalesInvoiceLineRepository lineRepository,
-                               TaxCodeRepository taxCodeRepository,
-                               AccountService accountService,
-                               TransactionService transactionService,
-                               PostingService postingService,
-                               AuditService auditService) {
-        this.invoiceRepository = invoiceRepository;
-        this.lineRepository = lineRepository;
-        this.taxCodeRepository = taxCodeRepository;
-        this.accountService = accountService;
-        this.transactionService = transactionService;
-        this.postingService = postingService;
-        this.auditService = auditService;
+  public SalesInvoiceService(
+      SalesInvoiceRepository invoiceRepository,
+      SalesInvoiceLineRepository lineRepository,
+      TaxCodeRepository taxCodeRepository,
+      AccountService accountService,
+      TransactionService transactionService,
+      PostingService postingService,
+      AuditService auditService) {
+    this.invoiceRepository = invoiceRepository;
+    this.lineRepository = lineRepository;
+    this.taxCodeRepository = taxCodeRepository;
+    this.accountService = accountService;
+    this.transactionService = transactionService;
+    this.postingService = postingService;
+    this.auditService = auditService;
+  }
+
+  /** Creates a new draft invoice. */
+  public SalesInvoice createInvoice(
+      Company company, Contact contact, LocalDate issueDate, LocalDate dueDate, User createdBy) {
+    String invoiceNumber = generateInvoiceNumber(company);
+    SalesInvoice invoice = new SalesInvoice(company, invoiceNumber, contact, issueDate, dueDate);
+    invoice.setCreatedBy(createdBy);
+    invoice = invoiceRepository.save(invoice);
+
+    auditService.logEvent(
+        company,
+        createdBy,
+        "INVOICE_CREATED",
+        "SalesInvoice",
+        invoice.getId(),
+        "Created invoice " + invoiceNumber + " for " + contact.getName());
+
+    return invoice;
+  }
+
+  /** Creates a new draft invoice with a specific invoice number. */
+  public SalesInvoice createInvoice(
+      Company company,
+      String invoiceNumber,
+      Contact contact,
+      LocalDate issueDate,
+      LocalDate dueDate,
+      User createdBy) {
+    if (invoiceRepository.existsByCompanyAndInvoiceNumber(company, invoiceNumber)) {
+      throw new IllegalArgumentException("Invoice number already exists: " + invoiceNumber);
     }
 
-    /**
-     * Creates a new draft invoice.
-     */
-    public SalesInvoice createInvoice(Company company, Contact contact, LocalDate issueDate,
-                                       LocalDate dueDate, User createdBy) {
-        String invoiceNumber = generateInvoiceNumber(company);
-        SalesInvoice invoice = new SalesInvoice(company, invoiceNumber, contact, issueDate, dueDate);
-        invoice.setCreatedBy(createdBy);
-        invoice = invoiceRepository.save(invoice);
+    SalesInvoice invoice = new SalesInvoice(company, invoiceNumber, contact, issueDate, dueDate);
+    invoice.setCreatedBy(createdBy);
+    invoice = invoiceRepository.save(invoice);
 
-        auditService.logEvent(company, createdBy, "INVOICE_CREATED", "SalesInvoice", invoice.getId(),
-            "Created invoice " + invoiceNumber + " for " + contact.getName());
+    auditService.logEvent(
+        company,
+        createdBy,
+        "INVOICE_CREATED",
+        "SalesInvoice",
+        invoice.getId(),
+        "Created invoice " + invoiceNumber + " for " + contact.getName());
 
-        return invoice;
+    return invoice;
+  }
+
+  /** Generates the next invoice number for a company. Uses numeric incrementing: 1, 2, 3, etc. */
+  public String generateInvoiceNumber(Company company) {
+    List<String> existingNumbers = invoiceRepository.findAllInvoiceNumbersByCompany(company);
+    int maxNumber = 0;
+    for (String num : existingNumbers) {
+      try {
+        // Remove CN- prefix if present for credit notes
+        String cleanNum = num.startsWith("CN-") ? num.substring(3) : num;
+        int parsed = Integer.parseInt(cleanNum);
+        if (parsed > maxNumber) {
+          maxNumber = parsed;
+        }
+      } catch (NumberFormatException ignored) {
+        // Skip non-numeric invoice numbers
+      }
+    }
+    return String.valueOf(maxNumber + 1);
+  }
+
+  /**
+   * Generates a credit note number based on the original invoice number. Uses CN-{originalNumber}
+   * pattern.
+   */
+  public String generateCreditNoteNumber(Company company, SalesInvoice originalInvoice) {
+    String baseNumber = "CN-" + originalInvoice.getInvoiceNumber();
+    // Check if this number exists, if so append a suffix
+    String finalNumber = baseNumber;
+    int suffix = 1;
+    while (invoiceRepository.existsByCompanyAndInvoiceNumber(company, finalNumber)) {
+      finalNumber = baseNumber + "-" + suffix;
+      suffix++;
+    }
+    return finalNumber;
+  }
+
+  /** Adds a line to a draft invoice. */
+  public SalesInvoiceLine addLine(
+      SalesInvoice invoice,
+      Account account,
+      String description,
+      BigDecimal quantity,
+      BigDecimal unitPrice,
+      String taxCode) {
+    if (!invoice.isDraft()) {
+      throw new IllegalStateException("Cannot add lines to a non-draft invoice");
     }
 
-    /**
-     * Creates a new draft invoice with a specific invoice number.
-     */
-    public SalesInvoice createInvoice(Company company, String invoiceNumber, Contact contact,
-                                       LocalDate issueDate, LocalDate dueDate, User createdBy) {
-        if (invoiceRepository.existsByCompanyAndInvoiceNumber(company, invoiceNumber)) {
-            throw new IllegalArgumentException("Invoice number already exists: " + invoiceNumber);
-        }
+    SalesInvoiceLine line = new SalesInvoiceLine(account, quantity, unitPrice);
+    line.setDescription(description);
+    line.setTaxCode(taxCode);
 
-        SalesInvoice invoice = new SalesInvoice(company, invoiceNumber, contact, issueDate, dueDate);
-        invoice.setCreatedBy(createdBy);
-        invoice = invoiceRepository.save(invoice);
-
-        auditService.logEvent(company, createdBy, "INVOICE_CREATED", "SalesInvoice", invoice.getId(),
-            "Created invoice " + invoiceNumber + " for " + contact.getName());
-
-        return invoice;
+    // Look up tax rate if tax code provided
+    if (taxCode != null && !taxCode.isBlank()) {
+      Optional<TaxCode> taxCodeEntity =
+          taxCodeRepository.findByCompanyAndCode(invoice.getCompany(), taxCode);
+      if (taxCodeEntity.isPresent()) {
+        // Convert rate from decimal (0.15) to percentage (15) for storage
+        BigDecimal rate = taxCodeEntity.get().getRate().multiply(BigDecimal.valueOf(100));
+        line.setTaxRate(rate);
+      }
     }
 
-    /**
-     * Generates the next invoice number for a company.
-     * Uses numeric incrementing: 1, 2, 3, etc.
-     */
-    public String generateInvoiceNumber(Company company) {
-        List<String> existingNumbers = invoiceRepository.findAllInvoiceNumbersByCompany(company);
-        int maxNumber = 0;
-        for (String num : existingNumbers) {
-            try {
-                // Remove CN- prefix if present for credit notes
-                String cleanNum = num.startsWith("CN-") ? num.substring(3) : num;
-                int parsed = Integer.parseInt(cleanNum);
-                if (parsed > maxNumber) {
-                    maxNumber = parsed;
-                }
-            } catch (NumberFormatException ignored) {
-                // Skip non-numeric invoice numbers
-            }
-        }
-        return String.valueOf(maxNumber + 1);
+    line.calculateTotals();
+    invoice.addLine(line);
+    invoice.recalculateTotals();
+    invoiceRepository.save(invoice);
+
+    return line;
+  }
+
+  /** Adds a line from a product to a draft invoice. */
+  public SalesInvoiceLine addLineFromProduct(
+      SalesInvoice invoice, Product product, BigDecimal quantity) {
+    if (!invoice.isDraft()) {
+      throw new IllegalStateException("Cannot add lines to a non-draft invoice");
     }
 
-    /**
-     * Generates a credit note number based on the original invoice number.
-     * Uses CN-{originalNumber} pattern.
-     */
-    public String generateCreditNoteNumber(Company company, SalesInvoice originalInvoice) {
-        String baseNumber = "CN-" + originalInvoice.getInvoiceNumber();
-        // Check if this number exists, if so append a suffix
-        String finalNumber = baseNumber;
-        int suffix = 1;
-        while (invoiceRepository.existsByCompanyAndInvoiceNumber(company, finalNumber)) {
-            finalNumber = baseNumber + "-" + suffix;
-            suffix++;
-        }
-        return finalNumber;
+    Account account = product.getSalesAccount();
+    if (account == null) {
+      throw new IllegalStateException(
+          "Product has no sales account configured: " + product.getCode());
     }
 
-    /**
-     * Adds a line to a draft invoice.
-     */
-    public SalesInvoiceLine addLine(SalesInvoice invoice, Account account, String description,
-                                     BigDecimal quantity, BigDecimal unitPrice, String taxCode) {
-        if (!invoice.isDraft()) {
-            throw new IllegalStateException("Cannot add lines to a non-draft invoice");
-        }
+    SalesInvoiceLine line = new SalesInvoiceLine(account, quantity, product.getSellPrice());
+    line.setProduct(product);
+    line.setDescription(product.getName());
+    line.setTaxCode(product.getTaxCode());
 
-        SalesInvoiceLine line = new SalesInvoiceLine(account, quantity, unitPrice);
-        line.setDescription(description);
-        line.setTaxCode(taxCode);
-
-        // Look up tax rate if tax code provided
-        if (taxCode != null && !taxCode.isBlank()) {
-            Optional<TaxCode> taxCodeEntity = taxCodeRepository.findByCompanyAndCode(
-                invoice.getCompany(), taxCode);
-            if (taxCodeEntity.isPresent()) {
-                // Convert rate from decimal (0.15) to percentage (15) for storage
-                BigDecimal rate = taxCodeEntity.get().getRate().multiply(BigDecimal.valueOf(100));
-                line.setTaxRate(rate);
-            }
-        }
-
-        line.calculateTotals();
-        invoice.addLine(line);
-        invoice.recalculateTotals();
-        invoiceRepository.save(invoice);
-
-        return line;
+    // Look up tax rate if product has tax code
+    if (product.getTaxCode() != null && !product.getTaxCode().isBlank()) {
+      Optional<TaxCode> taxCodeEntity =
+          taxCodeRepository.findByCompanyAndCode(invoice.getCompany(), product.getTaxCode());
+      if (taxCodeEntity.isPresent()) {
+        BigDecimal rate = taxCodeEntity.get().getRate().multiply(BigDecimal.valueOf(100));
+        line.setTaxRate(rate);
+      }
     }
 
-    /**
-     * Adds a line from a product to a draft invoice.
-     */
-    public SalesInvoiceLine addLineFromProduct(SalesInvoice invoice, Product product,
-                                                BigDecimal quantity) {
-        if (!invoice.isDraft()) {
-            throw new IllegalStateException("Cannot add lines to a non-draft invoice");
-        }
+    line.calculateTotals();
+    invoice.addLine(line);
+    invoice.recalculateTotals();
+    invoiceRepository.save(invoice);
 
-        Account account = product.getSalesAccount();
-        if (account == null) {
-            throw new IllegalStateException("Product has no sales account configured: " + product.getCode());
-        }
+    return line;
+  }
 
-        SalesInvoiceLine line = new SalesInvoiceLine(account, quantity, product.getSellPrice());
-        line.setProduct(product);
-        line.setDescription(product.getName());
-        line.setTaxCode(product.getTaxCode());
-
-        // Look up tax rate if product has tax code
-        if (product.getTaxCode() != null && !product.getTaxCode().isBlank()) {
-            Optional<TaxCode> taxCodeEntity = taxCodeRepository.findByCompanyAndCode(
-                invoice.getCompany(), product.getTaxCode());
-            if (taxCodeEntity.isPresent()) {
-                BigDecimal rate = taxCodeEntity.get().getRate().multiply(BigDecimal.valueOf(100));
-                line.setTaxRate(rate);
-            }
-        }
-
-        line.calculateTotals();
-        invoice.addLine(line);
-        invoice.recalculateTotals();
-        invoiceRepository.save(invoice);
-
-        return line;
+  /** Removes a line from a draft invoice. */
+  public void removeLine(SalesInvoice invoice, SalesInvoiceLine line) {
+    if (!invoice.isDraft()) {
+      throw new IllegalStateException("Cannot remove lines from a non-draft invoice");
     }
 
-    /**
-     * Removes a line from a draft invoice.
-     */
-    public void removeLine(SalesInvoice invoice, SalesInvoiceLine line) {
-        if (!invoice.isDraft()) {
-            throw new IllegalStateException("Cannot remove lines from a non-draft invoice");
-        }
+    invoice.removeLine(line);
+    invoice.recalculateTotals();
+    invoiceRepository.save(invoice);
+  }
 
-        invoice.removeLine(line);
-        invoice.recalculateTotals();
-        invoiceRepository.save(invoice);
+  /** Updates an existing line on a draft invoice. */
+  public void updateLine(
+      SalesInvoiceLine line,
+      String description,
+      BigDecimal quantity,
+      BigDecimal unitPrice,
+      Account account,
+      String taxCode) {
+    SalesInvoice invoice = line.getInvoice();
+    if (!invoice.isDraft()) {
+      throw new IllegalStateException("Cannot update lines on a non-draft invoice");
     }
 
-    /**
-     * Updates an existing line on a draft invoice.
-     */
-    public void updateLine(SalesInvoiceLine line, String description, BigDecimal quantity,
-                           BigDecimal unitPrice, Account account, String taxCode) {
-        SalesInvoice invoice = line.getInvoice();
-        if (!invoice.isDraft()) {
-            throw new IllegalStateException("Cannot update lines on a non-draft invoice");
-        }
+    line.setDescription(description);
+    line.setQuantity(quantity);
+    line.setUnitPrice(unitPrice);
+    line.setAccount(account);
+    line.setTaxCode(taxCode);
 
-        line.setDescription(description);
-        line.setQuantity(quantity);
-        line.setUnitPrice(unitPrice);
-        line.setAccount(account);
-        line.setTaxCode(taxCode);
-
-        // Update tax rate
-        if (taxCode != null && !taxCode.isBlank()) {
-            Optional<TaxCode> taxCodeEntity = taxCodeRepository.findByCompanyAndCode(
-                invoice.getCompany(), taxCode);
-            if (taxCodeEntity.isPresent()) {
-                BigDecimal rate = taxCodeEntity.get().getRate().multiply(BigDecimal.valueOf(100));
-                line.setTaxRate(rate);
-            } else {
-                line.setTaxRate(null);
-            }
-        } else {
-            line.setTaxRate(null);
-        }
-
-        line.calculateTotals();
-        invoice.recalculateTotals();
-        invoiceRepository.save(invoice);
+    // Update tax rate
+    if (taxCode != null && !taxCode.isBlank()) {
+      Optional<TaxCode> taxCodeEntity =
+          taxCodeRepository.findByCompanyAndCode(invoice.getCompany(), taxCode);
+      if (taxCodeEntity.isPresent()) {
+        BigDecimal rate = taxCodeEntity.get().getRate().multiply(BigDecimal.valueOf(100));
+        line.setTaxRate(rate);
+      } else {
+        line.setTaxRate(null);
+      }
+    } else {
+      line.setTaxRate(null);
     }
 
-    /**
-     * Issues a draft invoice, posting it to the ledger.
-     * Creates a JOURNAL transaction with:
-     * - Debit: AR control account for total amount
-     * - Credit: Income accounts for each line's net amount
-     * - Credit: GST collected for total tax
-     */
-    public SalesInvoice issueInvoice(SalesInvoice invoice, User actor) {
-        if (!invoice.isDraft()) {
-            throw new IllegalStateException("Invoice is not in draft status");
-        }
+    line.calculateTotals();
+    invoice.recalculateTotals();
+    invoiceRepository.save(invoice);
+  }
 
-        if (invoice.getLines().isEmpty()) {
-            throw new IllegalStateException("Invoice has no lines");
-        }
+  /**
+   * Issues a draft invoice, posting it to the ledger. Creates a JOURNAL transaction with: - Debit:
+   * AR control account for total amount - Credit: Income accounts for each line's net amount -
+   * Credit: GST collected for total tax
+   */
+  public SalesInvoice issueInvoice(SalesInvoice invoice, User actor) {
+    if (!invoice.isDraft()) {
+      throw new IllegalStateException("Invoice is not in draft status");
+    }
 
-        Company company = invoice.getCompany();
+    if (invoice.getLines().isEmpty()) {
+      throw new IllegalStateException("Invoice has no lines");
+    }
 
-        // Find AR control account
-        Account arAccount = accountService.findByCompanyAndCode(company, AR_ACCOUNT_CODE)
-            .orElseThrow(() -> new IllegalStateException(
-                "AR control account not found: " + AR_ACCOUNT_CODE));
+    Company company = invoice.getCompany();
 
-        // Create the posting transaction
-        String description = "Invoice " + invoice.getInvoiceNumber() + " - " +
-            invoice.getContact().getName();
-        Transaction transaction = transactionService.createTransaction(
+    // Find AR control account
+    Account arAccount =
+        accountService
+            .findByCompanyAndCode(company, AR_ACCOUNT_CODE)
+            .orElseThrow(
+                () ->
+                    new IllegalStateException("AR control account not found: " + AR_ACCOUNT_CODE));
+
+    // Create the posting transaction
+    String description =
+        "Invoice " + invoice.getInvoiceNumber() + " - " + invoice.getContact().getName();
+    Transaction transaction =
+        transactionService.createTransaction(
             company,
             Transaction.TransactionType.JOURNAL,
             invoice.getIssueDate(),
             description,
-            actor
-        );
-        transaction.setReference(invoice.getInvoiceNumber());
+            actor);
+    transaction.setReference(invoice.getInvoiceNumber());
 
-        // Debit AR for the total amount (including tax)
-        TransactionLine arLine = new TransactionLine(
-            arAccount,
-            invoice.getTotal(),
-            TransactionLine.Direction.DEBIT
-        );
-        arLine.setMemo("AR for invoice " + invoice.getInvoiceNumber());
-        transaction.addLine(arLine);
+    // Debit AR for the total amount (including tax)
+    TransactionLine arLine =
+        new TransactionLine(arAccount, invoice.getTotal(), TransactionLine.Direction.DEBIT);
+    arLine.setMemo("AR for invoice " + invoice.getInvoiceNumber());
+    transaction.addLine(arLine);
 
-        // Credit income accounts for each line (net amounts)
-        for (SalesInvoiceLine invoiceLine : invoice.getLines()) {
-            TransactionLine incomeLine = new TransactionLine(
-                invoiceLine.getAccount(),
-                invoiceLine.getLineTotal(),
-                TransactionLine.Direction.CREDIT
-            );
-            incomeLine.setTaxCode(invoiceLine.getTaxCode());
-            incomeLine.setDepartment(invoiceLine.getDepartment());
-            incomeLine.setMemo(invoiceLine.getDescription());
-            transaction.addLine(incomeLine);
-        }
-
-        // Credit GST collected if there's any tax
-        if (invoice.getTaxTotal().compareTo(BigDecimal.ZERO) > 0) {
-            Account gstAccount = accountService.findByCompanyAndCode(company, GST_COLLECTED_CODE)
-                .orElseThrow(() -> new IllegalStateException(
-                    "GST collected account not found: " + GST_COLLECTED_CODE));
-
-            TransactionLine gstLine = new TransactionLine(
-                gstAccount,
-                invoice.getTaxTotal(),
-                TransactionLine.Direction.CREDIT
-            );
-            gstLine.setMemo("GST on invoice " + invoice.getInvoiceNumber());
-            transaction.addLine(gstLine);
-        }
-
-        transactionService.save(transaction);
-
-        // Post the transaction to create ledger entries
-        transaction = postingService.postTransaction(transaction, actor);
-
-        // Update invoice status
-        invoice.setStatus(InvoiceStatus.ISSUED);
-        invoice.setIssuedAt(Instant.now());
-        invoice.setPostedTransaction(transaction);
-        invoice = invoiceRepository.save(invoice);
-
-        auditService.logEvent(company, actor, "INVOICE_ISSUED", "SalesInvoice", invoice.getId(),
-            "Issued invoice " + invoice.getInvoiceNumber() + " for $" + invoice.getTotal());
-
-        return invoice;
+    // Credit income accounts for each line (net amounts)
+    for (SalesInvoiceLine invoiceLine : invoice.getLines()) {
+      TransactionLine incomeLine =
+          new TransactionLine(
+              invoiceLine.getAccount(),
+              invoiceLine.getLineTotal(),
+              TransactionLine.Direction.CREDIT);
+      incomeLine.setTaxCode(invoiceLine.getTaxCode());
+      incomeLine.setDepartment(invoiceLine.getDepartment());
+      incomeLine.setMemo(invoiceLine.getDescription());
+      transaction.addLine(incomeLine);
     }
 
-    /**
-     * Voids an issued invoice by creating a reversal transaction.
-     * Sets the invoice status to VOID.
-     */
-    public SalesInvoice voidInvoice(SalesInvoice invoice, User actor, String reason) {
-        if (!invoice.isIssued()) {
-            throw new IllegalStateException("Can only void issued invoices");
-        }
+    // Credit GST collected if there's any tax
+    if (invoice.getTaxTotal().compareTo(BigDecimal.ZERO) > 0) {
+      Account gstAccount =
+          accountService
+              .findByCompanyAndCode(company, GST_COLLECTED_CODE)
+              .orElseThrow(
+                  () ->
+                      new IllegalStateException(
+                          "GST collected account not found: " + GST_COLLECTED_CODE));
 
-        if (invoice.getAmountPaid().compareTo(BigDecimal.ZERO) > 0) {
-            throw new IllegalStateException("Cannot void invoice with payments allocated");
-        }
-
-        // Create reversal of the posted transaction
-        Transaction postedTransaction = invoice.getPostedTransaction();
-        if (postedTransaction != null) {
-            postingService.reverseTransaction(postedTransaction, actor, reason);
-        }
-
-        // Update invoice status
-        invoice.setStatus(InvoiceStatus.VOID);
-        invoice = invoiceRepository.save(invoice);
-
-        auditService.logEvent(invoice.getCompany(), actor, "INVOICE_VOIDED", "SalesInvoice",
-            invoice.getId(), "Voided invoice " + invoice.getInvoiceNumber() +
-            (reason != null ? ": " + reason : ""));
-
-        return invoice;
+      TransactionLine gstLine =
+          new TransactionLine(gstAccount, invoice.getTaxTotal(), TransactionLine.Direction.CREDIT);
+      gstLine.setMemo("GST on invoice " + invoice.getInvoiceNumber());
+      transaction.addLine(gstLine);
     }
 
-    /**
-     * Creates a draft credit note against an issued invoice.
-     * Credit notes can be for the full amount or partial (user can adjust lines).
-     *
-     * @param originalInvoice The invoice to credit
-     * @param createdBy The user creating the credit note
-     * @param fullCredit If true, copies all lines from the original invoice
-     * @return The draft credit note
-     */
-    public SalesInvoice createCreditNote(SalesInvoice originalInvoice, User createdBy, boolean fullCredit) {
-        if (!originalInvoice.isIssued()) {
-            throw new IllegalStateException("Can only create credit notes against issued invoices");
-        }
+    transactionService.save(transaction);
 
-        if (originalInvoice.isCreditNote()) {
-            throw new IllegalStateException("Cannot create a credit note against another credit note");
-        }
+    // Post the transaction to create ledger entries
+    transaction = postingService.postTransaction(transaction, actor);
 
-        Company company = originalInvoice.getCompany();
-        String creditNoteNumber = generateCreditNoteNumber(company, originalInvoice);
+    // Update invoice status
+    invoice.setStatus(InvoiceStatus.ISSUED);
+    invoice.setIssuedAt(Instant.now());
+    invoice.setPostedTransaction(transaction);
+    invoice = invoiceRepository.save(invoice);
 
-        SalesInvoice creditNote = new SalesInvoice();
-        creditNote.setCompany(company);
-        creditNote.setInvoiceNumber(creditNoteNumber);
-        creditNote.setContact(originalInvoice.getContact());
-        creditNote.setIssueDate(LocalDate.now());
-        creditNote.setDueDate(LocalDate.now()); // Credit notes are due immediately
-        creditNote.setType(InvoiceType.CREDIT_NOTE);
-        creditNote.setOriginalInvoice(originalInvoice);
-        creditNote.setCreatedBy(createdBy);
-        creditNote.setCurrency(originalInvoice.getCurrency());
-        creditNote.setReference("Credit for invoice " + originalInvoice.getInvoiceNumber());
+    auditService.logEvent(
+        company,
+        actor,
+        "INVOICE_ISSUED",
+        "SalesInvoice",
+        invoice.getId(),
+        "Issued invoice " + invoice.getInvoiceNumber() + " for $" + invoice.getTotal());
 
-        creditNote = invoiceRepository.save(creditNote);
+    return invoice;
+  }
 
-        // If full credit, copy all lines from the original invoice
-        if (fullCredit) {
-            for (SalesInvoiceLine originalLine : originalInvoice.getLines()) {
-                SalesInvoiceLine creditLine = new SalesInvoiceLine(
-                    originalLine.getAccount(),
-                    originalLine.getQuantity(),
-                    originalLine.getUnitPrice()
-                );
-                creditLine.setProduct(originalLine.getProduct());
-                creditLine.setDescription(originalLine.getDescription());
-                creditLine.setTaxCode(originalLine.getTaxCode());
-                creditLine.setTaxRate(originalLine.getTaxRate());
-                creditLine.setDepartment(originalLine.getDepartment());
-                creditLine.calculateTotals();
-                creditNote.addLine(creditLine);
-            }
-            creditNote.recalculateTotals();
-            creditNote = invoiceRepository.save(creditNote);
-        }
-
-        auditService.logEvent(company, createdBy, "CREDIT_NOTE_CREATED", "SalesInvoice", creditNote.getId(),
-            "Created credit note " + creditNoteNumber + " against invoice " + originalInvoice.getInvoiceNumber());
-
-        return creditNote;
+  /**
+   * Voids an issued invoice by creating a reversal transaction. Sets the invoice status to VOID.
+   */
+  public SalesInvoice voidInvoice(SalesInvoice invoice, User actor, String reason) {
+    if (!invoice.isIssued()) {
+      throw new IllegalStateException("Can only void issued invoices");
     }
 
-    /**
-     * Issues a credit note, posting it to the ledger with reversed entries.
-     * Creates a JOURNAL transaction with:
-     * - Credit: AR control account for total amount (reduces receivable)
-     * - Debit: Income accounts for each line's net amount (reduces income)
-     * - Debit: GST collected for total tax (reduces tax liability)
-     */
-    public SalesInvoice issueCreditNote(SalesInvoice creditNote, User actor) {
-        if (!creditNote.isCreditNote()) {
-            throw new IllegalStateException("This is not a credit note");
-        }
+    if (invoice.getAmountPaid().compareTo(BigDecimal.ZERO) > 0) {
+      throw new IllegalStateException("Cannot void invoice with payments allocated");
+    }
 
-        if (!creditNote.isDraft()) {
-            throw new IllegalStateException("Credit note is not in draft status");
-        }
+    // Create reversal of the posted transaction
+    Transaction postedTransaction = invoice.getPostedTransaction();
+    if (postedTransaction != null) {
+      postingService.reverseTransaction(postedTransaction, actor, reason);
+    }
 
-        if (creditNote.getLines().isEmpty()) {
-            throw new IllegalStateException("Credit note has no lines");
-        }
+    // Update invoice status
+    invoice.setStatus(InvoiceStatus.VOID);
+    invoice = invoiceRepository.save(invoice);
 
-        Company company = creditNote.getCompany();
-        SalesInvoice originalInvoice = creditNote.getOriginalInvoice();
+    auditService.logEvent(
+        invoice.getCompany(),
+        actor,
+        "INVOICE_VOIDED",
+        "SalesInvoice",
+        invoice.getId(),
+        "Voided invoice " + invoice.getInvoiceNumber() + (reason != null ? ": " + reason : ""));
 
-        // Validate credit note amount doesn't exceed remaining balance on original invoice
-        BigDecimal remainingBalance = originalInvoice.getBalance();
-        if (creditNote.getTotal().compareTo(remainingBalance) > 0) {
-            throw new IllegalStateException(
-                "Credit note amount ($" + creditNote.getTotal() +
-                ") exceeds invoice remaining balance ($" + remainingBalance + ")");
-        }
+    return invoice;
+  }
 
-        // Find AR control account
-        Account arAccount = accountService.findByCompanyAndCode(company, AR_ACCOUNT_CODE)
-            .orElseThrow(() -> new IllegalStateException(
-                "AR control account not found: " + AR_ACCOUNT_CODE));
+  /**
+   * Creates a draft credit note against an issued invoice. Credit notes can be for the full amount
+   * or partial (user can adjust lines).
+   *
+   * @param originalInvoice The invoice to credit
+   * @param createdBy The user creating the credit note
+   * @param fullCredit If true, copies all lines from the original invoice
+   * @return The draft credit note
+   */
+  public SalesInvoice createCreditNote(
+      SalesInvoice originalInvoice, User createdBy, boolean fullCredit) {
+    if (!originalInvoice.isIssued()) {
+      throw new IllegalStateException("Can only create credit notes against issued invoices");
+    }
 
-        // Create the posting transaction - REVERSED from normal invoice
-        String description = "Credit Note " + creditNote.getInvoiceNumber() + " - " +
-            creditNote.getContact().getName();
-        Transaction transaction = transactionService.createTransaction(
+    if (originalInvoice.isCreditNote()) {
+      throw new IllegalStateException("Cannot create a credit note against another credit note");
+    }
+
+    Company company = originalInvoice.getCompany();
+    String creditNoteNumber = generateCreditNoteNumber(company, originalInvoice);
+
+    SalesInvoice creditNote = new SalesInvoice();
+    creditNote.setCompany(company);
+    creditNote.setInvoiceNumber(creditNoteNumber);
+    creditNote.setContact(originalInvoice.getContact());
+    creditNote.setIssueDate(LocalDate.now());
+    creditNote.setDueDate(LocalDate.now()); // Credit notes are due immediately
+    creditNote.setType(InvoiceType.CREDIT_NOTE);
+    creditNote.setOriginalInvoice(originalInvoice);
+    creditNote.setCreatedBy(createdBy);
+    creditNote.setCurrency(originalInvoice.getCurrency());
+    creditNote.setReference("Credit for invoice " + originalInvoice.getInvoiceNumber());
+
+    creditNote = invoiceRepository.save(creditNote);
+
+    // If full credit, copy all lines from the original invoice
+    if (fullCredit) {
+      for (SalesInvoiceLine originalLine : originalInvoice.getLines()) {
+        SalesInvoiceLine creditLine =
+            new SalesInvoiceLine(
+                originalLine.getAccount(), originalLine.getQuantity(), originalLine.getUnitPrice());
+        creditLine.setProduct(originalLine.getProduct());
+        creditLine.setDescription(originalLine.getDescription());
+        creditLine.setTaxCode(originalLine.getTaxCode());
+        creditLine.setTaxRate(originalLine.getTaxRate());
+        creditLine.setDepartment(originalLine.getDepartment());
+        creditLine.calculateTotals();
+        creditNote.addLine(creditLine);
+      }
+      creditNote.recalculateTotals();
+      creditNote = invoiceRepository.save(creditNote);
+    }
+
+    auditService.logEvent(
+        company,
+        createdBy,
+        "CREDIT_NOTE_CREATED",
+        "SalesInvoice",
+        creditNote.getId(),
+        "Created credit note "
+            + creditNoteNumber
+            + " against invoice "
+            + originalInvoice.getInvoiceNumber());
+
+    return creditNote;
+  }
+
+  /**
+   * Issues a credit note, posting it to the ledger with reversed entries. Creates a JOURNAL
+   * transaction with: - Credit: AR control account for total amount (reduces receivable) - Debit:
+   * Income accounts for each line's net amount (reduces income) - Debit: GST collected for total
+   * tax (reduces tax liability)
+   */
+  public SalesInvoice issueCreditNote(SalesInvoice creditNote, User actor) {
+    if (!creditNote.isCreditNote()) {
+      throw new IllegalStateException("This is not a credit note");
+    }
+
+    if (!creditNote.isDraft()) {
+      throw new IllegalStateException("Credit note is not in draft status");
+    }
+
+    if (creditNote.getLines().isEmpty()) {
+      throw new IllegalStateException("Credit note has no lines");
+    }
+
+    Company company = creditNote.getCompany();
+    SalesInvoice originalInvoice = creditNote.getOriginalInvoice();
+
+    // Validate credit note amount doesn't exceed remaining balance on original invoice
+    BigDecimal remainingBalance = originalInvoice.getBalance();
+    if (creditNote.getTotal().compareTo(remainingBalance) > 0) {
+      throw new IllegalStateException(
+          "Credit note amount ($"
+              + creditNote.getTotal()
+              + ") exceeds invoice remaining balance ($"
+              + remainingBalance
+              + ")");
+    }
+
+    // Find AR control account
+    Account arAccount =
+        accountService
+            .findByCompanyAndCode(company, AR_ACCOUNT_CODE)
+            .orElseThrow(
+                () ->
+                    new IllegalStateException("AR control account not found: " + AR_ACCOUNT_CODE));
+
+    // Create the posting transaction - REVERSED from normal invoice
+    String description =
+        "Credit Note " + creditNote.getInvoiceNumber() + " - " + creditNote.getContact().getName();
+    Transaction transaction =
+        transactionService.createTransaction(
             company,
             Transaction.TransactionType.JOURNAL,
             creditNote.getIssueDate(),
             description,
-            actor
-        );
-        transaction.setReference(creditNote.getInvoiceNumber());
+            actor);
+    transaction.setReference(creditNote.getInvoiceNumber());
 
-        // CREDIT AR for the total amount (reduces receivable)
-        TransactionLine arLine = new TransactionLine(
+    // CREDIT AR for the total amount (reduces receivable)
+    TransactionLine arLine =
+        new TransactionLine(
             arAccount,
             creditNote.getTotal(),
-            TransactionLine.Direction.CREDIT  // Reversed from invoice
-        );
-        arLine.setMemo("CR for credit note " + creditNote.getInvoiceNumber());
-        transaction.addLine(arLine);
-
-        // DEBIT income accounts for each line (reduces income)
-        for (SalesInvoiceLine creditLine : creditNote.getLines()) {
-            TransactionLine incomeLine = new TransactionLine(
-                creditLine.getAccount(),
-                creditLine.getLineTotal(),
-                TransactionLine.Direction.DEBIT  // Reversed from invoice
+            TransactionLine.Direction.CREDIT // Reversed from invoice
             );
-            incomeLine.setTaxCode(creditLine.getTaxCode());
-            incomeLine.setDepartment(creditLine.getDepartment());
-            incomeLine.setMemo(creditLine.getDescription());
-            transaction.addLine(incomeLine);
-        }
+    arLine.setMemo("CR for credit note " + creditNote.getInvoiceNumber());
+    transaction.addLine(arLine);
 
-        // DEBIT GST collected if there's any tax (reduces tax liability)
-        if (creditNote.getTaxTotal().compareTo(BigDecimal.ZERO) > 0) {
-            Account gstAccount = accountService.findByCompanyAndCode(company, GST_COLLECTED_CODE)
-                .orElseThrow(() -> new IllegalStateException(
-                    "GST collected account not found: " + GST_COLLECTED_CODE));
-
-            TransactionLine gstLine = new TransactionLine(
-                gstAccount,
-                creditNote.getTaxTotal(),
-                TransactionLine.Direction.DEBIT  // Reversed from invoice
-            );
-            gstLine.setMemo("GST on credit note " + creditNote.getInvoiceNumber());
-            transaction.addLine(gstLine);
-        }
-
-        transactionService.save(transaction);
-
-        // Post the transaction to create ledger entries
-        transaction = postingService.postTransaction(transaction, actor);
-
-        // Update credit note status
-        creditNote.setStatus(InvoiceStatus.ISSUED);
-        creditNote.setIssuedAt(Instant.now());
-        creditNote.setPostedTransaction(transaction);
-        creditNote = invoiceRepository.save(creditNote);
-
-        // Update the original invoice's paid amount (credit note reduces balance)
-        BigDecimal newAmountPaid = originalInvoice.getAmountPaid().add(creditNote.getTotal());
-        originalInvoice.setAmountPaid(newAmountPaid);
-        invoiceRepository.save(originalInvoice);
-
-        auditService.logEvent(company, actor, "CREDIT_NOTE_ISSUED", "SalesInvoice", creditNote.getId(),
-            "Issued credit note " + creditNote.getInvoiceNumber() + " for $" + creditNote.getTotal() +
-            " against invoice " + originalInvoice.getInvoiceNumber());
-
-        return creditNote;
+    // DEBIT income accounts for each line (reduces income)
+    for (SalesInvoiceLine creditLine : creditNote.getLines()) {
+      TransactionLine incomeLine =
+          new TransactionLine(
+              creditLine.getAccount(),
+              creditLine.getLineTotal(),
+              TransactionLine.Direction.DEBIT // Reversed from invoice
+              );
+      incomeLine.setTaxCode(creditLine.getTaxCode());
+      incomeLine.setDepartment(creditLine.getDepartment());
+      incomeLine.setMemo(creditLine.getDescription());
+      transaction.addLine(incomeLine);
     }
 
-    /**
-     * Finds all credit notes for a specific invoice.
-     */
-    @Transactional(readOnly = true)
-    public List<SalesInvoice> findCreditNotesForInvoice(SalesInvoice originalInvoice) {
-        return invoiceRepository.findByOriginalInvoice(originalInvoice);
+    // DEBIT GST collected if there's any tax (reduces tax liability)
+    if (creditNote.getTaxTotal().compareTo(BigDecimal.ZERO) > 0) {
+      Account gstAccount =
+          accountService
+              .findByCompanyAndCode(company, GST_COLLECTED_CODE)
+              .orElseThrow(
+                  () ->
+                      new IllegalStateException(
+                          "GST collected account not found: " + GST_COLLECTED_CODE));
+
+      TransactionLine gstLine =
+          new TransactionLine(
+              gstAccount,
+              creditNote.getTaxTotal(),
+              TransactionLine.Direction.DEBIT // Reversed from invoice
+              );
+      gstLine.setMemo("GST on credit note " + creditNote.getInvoiceNumber());
+      transaction.addLine(gstLine);
     }
 
-    /**
-     * Updates the amount paid on an invoice.
-     * Called by allocation service when payments are allocated.
-     */
-    public void updateAmountPaid(SalesInvoice invoice, BigDecimal totalPaid) {
-        invoice.setAmountPaid(totalPaid);
-        invoiceRepository.save(invoice);
+    transactionService.save(transaction);
+
+    // Post the transaction to create ledger entries
+    transaction = postingService.postTransaction(transaction, actor);
+
+    // Update credit note status
+    creditNote.setStatus(InvoiceStatus.ISSUED);
+    creditNote.setIssuedAt(Instant.now());
+    creditNote.setPostedTransaction(transaction);
+    creditNote = invoiceRepository.save(creditNote);
+
+    // Update the original invoice's paid amount (credit note reduces balance)
+    BigDecimal newAmountPaid = originalInvoice.getAmountPaid().add(creditNote.getTotal());
+    originalInvoice.setAmountPaid(newAmountPaid);
+    invoiceRepository.save(originalInvoice);
+
+    auditService.logEvent(
+        company,
+        actor,
+        "CREDIT_NOTE_ISSUED",
+        "SalesInvoice",
+        creditNote.getId(),
+        "Issued credit note "
+            + creditNote.getInvoiceNumber()
+            + " for $"
+            + creditNote.getTotal()
+            + " against invoice "
+            + originalInvoice.getInvoiceNumber());
+
+    return creditNote;
+  }
+
+  /** Finds all credit notes for a specific invoice. */
+  @Transactional(readOnly = true)
+  public List<SalesInvoice> findCreditNotesForInvoice(SalesInvoice originalInvoice) {
+    return invoiceRepository.findByOriginalInvoice(originalInvoice);
+  }
+
+  /**
+   * Updates the amount paid on an invoice. Called by allocation service when payments are
+   * allocated.
+   */
+  public void updateAmountPaid(SalesInvoice invoice, BigDecimal totalPaid) {
+    invoice.setAmountPaid(totalPaid);
+    invoiceRepository.save(invoice);
+  }
+
+  /** Saves an invoice. */
+  public SalesInvoice save(SalesInvoice invoice) {
+    return invoiceRepository.save(invoice);
+  }
+
+  // Query methods
+
+  @Transactional(readOnly = true)
+  public Optional<SalesInvoice> findById(Long id) {
+    return invoiceRepository.findById(id);
+  }
+
+  @Transactional(readOnly = true)
+  public Optional<SalesInvoice> findByCompanyAndNumber(Company company, String invoiceNumber) {
+    return invoiceRepository.findByCompanyAndInvoiceNumber(company, invoiceNumber);
+  }
+
+  @Transactional(readOnly = true)
+  public List<SalesInvoice> findByCompany(Company company) {
+    return invoiceRepository.findByCompanyOrderByIssueDateDescInvoiceNumberDesc(company);
+  }
+
+  @Transactional(readOnly = true)
+  public List<SalesInvoice> findByCompanyAndStatus(Company company, InvoiceStatus status) {
+    return invoiceRepository.findByCompanyAndStatusOrderByIssueDateDesc(company, status);
+  }
+
+  @Transactional(readOnly = true)
+  public List<SalesInvoice> findByCompanyAndContact(Company company, Contact contact) {
+    return invoiceRepository.findByCompanyAndContactOrderByIssueDateDesc(company, contact);
+  }
+
+  @Transactional(readOnly = true)
+  public List<SalesInvoice> findOutstandingByCompany(Company company) {
+    return invoiceRepository.findOutstandingByCompany(company);
+  }
+
+  @Transactional(readOnly = true)
+  public List<SalesInvoice> findOutstandingByContact(Company company, Contact contact) {
+    return invoiceRepository.findOutstandingByCompanyAndContact(company, contact);
+  }
+
+  @Transactional(readOnly = true)
+  public List<SalesInvoice> findOverdueByCompany(Company company) {
+    return invoiceRepository.findOverdueByCompany(company, LocalDate.now());
+  }
+
+  @Transactional(readOnly = true)
+  public List<SalesInvoice> searchByCompany(Company company, String searchTerm) {
+    if (searchTerm == null || searchTerm.isBlank()) {
+      return findByCompany(company);
     }
+    return invoiceRepository.searchByCompany(company, searchTerm.trim());
+  }
 
-    /**
-     * Saves an invoice.
-     */
-    public SalesInvoice save(SalesInvoice invoice) {
-        return invoiceRepository.save(invoice);
-    }
+  @Transactional(readOnly = true)
+  public List<SalesInvoice> findByDateRange(
+      Company company, LocalDate startDate, LocalDate endDate) {
+    return invoiceRepository.findByCompanyAndDateRange(company, startDate, endDate);
+  }
 
-    // Query methods
+  // Dashboard/reporting methods
 
-    @Transactional(readOnly = true)
-    public Optional<SalesInvoice> findById(Long id) {
-        return invoiceRepository.findById(id);
-    }
+  @Transactional(readOnly = true)
+  public BigDecimal getTotalOutstanding(Company company) {
+    return invoiceRepository.sumOutstandingByCompany(company);
+  }
 
-    @Transactional(readOnly = true)
-    public Optional<SalesInvoice> findByCompanyAndNumber(Company company, String invoiceNumber) {
-        return invoiceRepository.findByCompanyAndInvoiceNumber(company, invoiceNumber);
-    }
+  @Transactional(readOnly = true)
+  public BigDecimal getTotalOverdue(Company company) {
+    return invoiceRepository.sumOverdueByCompany(company, LocalDate.now());
+  }
 
-    @Transactional(readOnly = true)
-    public List<SalesInvoice> findByCompany(Company company) {
-        return invoiceRepository.findByCompanyOrderByIssueDateDescInvoiceNumberDesc(company);
-    }
-
-    @Transactional(readOnly = true)
-    public List<SalesInvoice> findByCompanyAndStatus(Company company, InvoiceStatus status) {
-        return invoiceRepository.findByCompanyAndStatusOrderByIssueDateDesc(company, status);
-    }
-
-    @Transactional(readOnly = true)
-    public List<SalesInvoice> findByCompanyAndContact(Company company, Contact contact) {
-        return invoiceRepository.findByCompanyAndContactOrderByIssueDateDesc(company, contact);
-    }
-
-    @Transactional(readOnly = true)
-    public List<SalesInvoice> findOutstandingByCompany(Company company) {
-        return invoiceRepository.findOutstandingByCompany(company);
-    }
-
-    @Transactional(readOnly = true)
-    public List<SalesInvoice> findOutstandingByContact(Company company, Contact contact) {
-        return invoiceRepository.findOutstandingByCompanyAndContact(company, contact);
-    }
-
-    @Transactional(readOnly = true)
-    public List<SalesInvoice> findOverdueByCompany(Company company) {
-        return invoiceRepository.findOverdueByCompany(company, LocalDate.now());
-    }
-
-    @Transactional(readOnly = true)
-    public List<SalesInvoice> searchByCompany(Company company, String searchTerm) {
-        if (searchTerm == null || searchTerm.isBlank()) {
-            return findByCompany(company);
-        }
-        return invoiceRepository.searchByCompany(company, searchTerm.trim());
-    }
-
-    @Transactional(readOnly = true)
-    public List<SalesInvoice> findByDateRange(Company company, LocalDate startDate, LocalDate endDate) {
-        return invoiceRepository.findByCompanyAndDateRange(company, startDate, endDate);
-    }
-
-    // Dashboard/reporting methods
-
-    @Transactional(readOnly = true)
-    public BigDecimal getTotalOutstanding(Company company) {
-        return invoiceRepository.sumOutstandingByCompany(company);
-    }
-
-    @Transactional(readOnly = true)
-    public BigDecimal getTotalOverdue(Company company) {
-        return invoiceRepository.sumOverdueByCompany(company, LocalDate.now());
-    }
-
-    @Transactional(readOnly = true)
-    public long countByStatus(Company company, InvoiceStatus status) {
-        return invoiceRepository.countByCompanyAndStatus(company, status);
-    }
+  @Transactional(readOnly = true)
+  public long countByStatus(Company company, InvoiceStatus status) {
+    return invoiceRepository.countByCompanyAndStatus(company, status);
+  }
 }

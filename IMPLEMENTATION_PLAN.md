@@ -41,6 +41,7 @@
 - **Phase 33 Allocation Rule Auto-Suggest COMPLETE** - Tag: 0.4.5
 - **Phase 34 Balance-Forward Statements COMPLETE** - Tag: 0.4.6
 - **Phase 35 Contact Tax Override Auto-Population COMPLETE** - Tag: 0.4.7
+- **Phase 36 Quality Tooling & Keyboard Shortcuts COMPLETE** - Tag: 0.4.8
 - All 150 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 21, InvitationServiceTest: 18, SalesInvoiceServiceTest: 11, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation
 - Database configured: H2 for development, PostgreSQL for production
@@ -977,6 +978,48 @@ Per specs, Release 1 must deliver:
 - [x] All 150 tests passing
 - [x] No forbidden markers
 
+### Phase 36: Quality Tooling & Keyboard Shortcuts (COMPLETE) - Tag: 0.4.8
+- [x] JaCoCo Code Coverage Plugin (spec 16)
+  - Added jacoco-maven-plugin 0.8.12 with prepare-agent, report, and check goals
+  - Coverage thresholds: 20% baseline (target 70% overall, 80% services)
+  - Coverage reports generated at target/site/jacoco/index.html
+  - Threshold progression plan documented in pom.xml for incremental improvement
+  - Excludes UI classes from coverage requirements (manually tested)
+- [x] Spotless Code Formatting Plugin (spec 16)
+  - Added spotless-maven-plugin 2.44.0 with Google Java Format
+  - Auto-removes unused imports and orders imports consistently
+  - Check with: ./mvnw spotless:check
+  - Fix with: ./mvnw spotless:apply
+  - All 175 Java files formatted to Google Java Style
+- [x] OWASP Dependency-Check Plugin (spec 16)
+  - Added dependency-check-maven 10.0.4 for vulnerability scanning
+  - Fails build on CVSS score >= 7 (critical vulnerabilities)
+  - Suppression file at dependency-check-suppressions.xml
+  - Run with: ./mvnw dependency-check:check
+- [x] Comprehensive release-check.sh Script (spec 16)
+  - Created scripts/release-check.sh with 9-step validation process
+  - Steps: git status, forbidden markers, formatting, compilation, tests, coverage, migrations, OWASP, production build
+  - --skip-owasp flag for faster local development checks
+  - Exit codes indicate pass/fail for CI integration
+- [x] Keyboard Shortcuts for Fast Navigation (spec 04, spec 15)
+  - Ctrl+K or / - Focus global search (standard web app convention)
+  - Alt+P - New Payment transaction
+  - Alt+R - New Receipt transaction
+  - Alt+J - New Journal transaction
+  - Alt+I - New Sales Invoice
+  - Alt+B - New Supplier Bill
+  - Alt+D - Go to Dashboard
+  - Alt+T - Go to Transactions
+  - Alt+C - Go to Contacts
+  - Alt+O - Go to Reports
+  - Alt+A - Go to Accounts
+  - ? (Shift+/) - Show keyboard shortcuts help
+  - Uses Shortcuts.addShortcutListener() with lifecycle binding to MainLayout
+  - TransactionsView, SalesInvoicesView, SupplierBillsView implement BeforeEnterObserver for ?new=true query param
+- [x] Updated AGENTS.md with new validation commands
+- [x] All 150 tests passing
+- [x] No forbidden markers
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -1038,6 +1081,9 @@ Per specs, Release 1 must deliver:
 - Transaction.Status enum (not TransactionStatus) - access as Transaction.Status.POSTED
 - TransactionLine.taxCode is a String not TaxCode object - display directly without .getCode()
 - Contact.taxOverrideCode is used to pre-populate tax codes in invoice/bill line entry; product tax code takes precedence when product selected
+- Vaadin 25 keyboard shortcuts use Shortcuts.addShortcutListener(component, command, key, modifiers) with component as lifecycle owner - NOT ShortcutRegistration.setLifecycleOwner() which is private
+- Views can handle query parameters via BeforeEnterObserver.beforeEnter() with event.getLocation().getQueryParameters()
+- Google Java Format via Spotless changes all existing code formatting - run spotless:apply before committing formatted changes
 
 ## Technical Notes
 - Build: `./mvnw compile`
