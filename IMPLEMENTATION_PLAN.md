@@ -65,6 +65,7 @@
 - **Phase 58 Bulk Email to Contacts COMPLETE** - Tag: 0.7.0
 - **Phase 59 Configurable Dashboard Tiles COMPLETE** - Tag: 0.7.1
 - **Phase 60 Audit Event Retention Policy COMPLETE** - Tag: 0.7.2
+- **Phase 61 Follow-up Reminders Dashboard Tile COMPLETE** - Tag: 0.7.3
 - All 255 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 24, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
@@ -1614,6 +1615,22 @@ Per specs, Release 1 must deliver:
 - [x] All 255 tests passing
 - [x] No forbidden markers
 
+### Phase 61: Follow-up Reminders Dashboard Tile (COMPLETE) - Tag: 0.7.3
+- [x] Added Follow-up Reminders dashboard tile per spec 07 requirement: "Notes/call logs + follow-up reminders (basic)"
+- [x] Implementation details:
+  - Added ContactNoteRepository dependency to DashboardView
+  - Added "Follow-up Reminders" to TILE_NAMES map and refreshTiles tile creators
+  - Created createFollowUpRemindersTile() method that displays:
+    - Count of contact notes with follow-up dates that are due today or overdue
+    - List of up to 3 contacts with due follow-ups
+    - Shows "X days overdue" indicator for past-due follow-ups
+    - Color-coded status (green for no due follow-ups, amber/warning for due items)
+  - Uses existing ContactNoteRepository.findDueFollowUpsByCompany() query
+  - Tile is configurable via Configure Tiles dialog (can be shown/hidden)
+- [x] Surfaces follow-up reminders on the main dashboard for operational visibility
+- [x] All 255 tests passing
+- [x] No forbidden markers
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -1695,7 +1712,7 @@ Per specs, Release 1 must deliver:
 - StatementRunService.previewCustomers() can be reused for email dialog to get list of customers matching run criteria; parseCriteriaFromRun() pattern parses JSON back to StatementCriteria for completed runs
 - BillPdfService mirrors InvoicePdfService pattern: same fonts, colors, layout structure, and PdfSettings support for consistent PDF generation across AR and AP documents
 - ReversalLink entity formally tracks reversal relationships between transactions per spec 04 domain model; string-based "REV-" reference tracking in description is kept for backwards compatibility and quick visual identification
-
+- Dashboard tiles can leverage existing repository methods (e.g., ContactNoteRepository.findDueFollowUpsByCompany()) - check for existing queries before writing new ones; existing domain queries often already support dashboard use cases
 
 ## Remaining Gaps (From Spec Analysis)
 

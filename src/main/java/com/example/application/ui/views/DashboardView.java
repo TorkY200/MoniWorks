@@ -17,12 +17,14 @@ import java.util.function.Function;
 
 import com.example.application.domain.Account;
 import com.example.application.domain.Company;
+import com.example.application.domain.ContactNote;
 import com.example.application.domain.RecurrenceExecutionLog;
 import com.example.application.domain.SalesInvoice;
 import com.example.application.domain.SavedView;
 import com.example.application.domain.SupplierBill;
 import com.example.application.domain.User;
 import com.example.application.repository.AccountRepository;
+import com.example.application.repository.ContactNoteRepository;
 import com.example.application.repository.LedgerEntryRepository;
 import com.example.application.repository.RecurrenceExecutionLogRepository;
 import com.example.application.repository.SalesInvoiceRepository;
@@ -73,6 +75,7 @@ public class DashboardView extends VerticalLayout {
   private final SalesInvoiceRepository salesInvoiceRepository;
   private final SupplierBillRepository supplierBillRepository;
   private final RecurrenceExecutionLogRepository recurrenceLogRepository;
+  private final ContactNoteRepository contactNoteRepository;
   private final SavedViewService savedViewService;
   private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -93,6 +96,7 @@ public class DashboardView extends VerticalLayout {
   private static final String TILE_OVERDUE_AR = "overdueAR";
   private static final String TILE_OVERDUE_AP = "overdueAP";
   private static final String TILE_FAILED_RECURRENCES = "failedRecurrences";
+  private static final String TILE_FOLLOWUP_REMINDERS = "followupReminders";
 
   // Tile display names for UI
   private static final Map<String, String> TILE_NAMES = new LinkedHashMap<>();
@@ -105,6 +109,7 @@ public class DashboardView extends VerticalLayout {
     TILE_NAMES.put(TILE_OVERDUE_AR, "Overdue Receivables");
     TILE_NAMES.put(TILE_OVERDUE_AP, "Overdue Payables");
     TILE_NAMES.put(TILE_FAILED_RECURRENCES, "Failed Recurrences");
+    TILE_NAMES.put(TILE_FOLLOWUP_REMINDERS, "Follow-up Reminders");
   }
 
   public DashboardView(
@@ -116,6 +121,7 @@ public class DashboardView extends VerticalLayout {
       SalesInvoiceRepository salesInvoiceRepository,
       SupplierBillRepository supplierBillRepository,
       RecurrenceExecutionLogRepository recurrenceLogRepository,
+      ContactNoteRepository contactNoteRepository,
       SavedViewService savedViewService) {
     this.companyContextService = companyContextService;
     this.accountRepository = accountRepository;
@@ -125,6 +131,7 @@ public class DashboardView extends VerticalLayout {
     this.salesInvoiceRepository = salesInvoiceRepository;
     this.supplierBillRepository = supplierBillRepository;
     this.recurrenceLogRepository = recurrenceLogRepository;
+    this.contactNoteRepository = contactNoteRepository;
     this.savedViewService = savedViewService;
 
     // Set up currency format for NZ
@@ -241,6 +248,7 @@ public class DashboardView extends VerticalLayout {
     tileCreators.put(TILE_OVERDUE_AR, this::createOverdueReceivablesTile);
     tileCreators.put(TILE_OVERDUE_AP, this::createOverduePayablesTile);
     tileCreators.put(TILE_FAILED_RECURRENCES, this::createFailedRecurrencesTile);
+    tileCreators.put(TILE_FOLLOWUP_REMINDERS, this::createFollowupRemindersTile);
 
     // Add tiles in order, only if visible
     for (String tileId : TILE_NAMES.keySet()) {
@@ -998,6 +1006,136 @@ public class DashboardView extends VerticalLayout {
         .set("margin-top", "auto")
         .set("margin-bottom", "0");
     content.add(period);
+
+    return tile;
+  }
+
+  /**
+   * Creates the follow-up reminders tile showing contact notes with due or overdue follow-ups.
+   * Helps users track customer/supplier interactions that need attention.
+   */
+  private Div createFollowupRemindersTile(Company company) {
+    Div tile = createTileBase("Follow-up Reminders", "var(--lumo-warning-color)");
+    VerticalLayout content = (VerticalLayout) tile.getComponentAt(1);
+
+    // Find follow-ups due today or earlier (overdue)
+    LocalDate today = LocalDate.now();
+    List<ContactNote> dueFollowUps =
+        contactNoteRepository.findDueFollowUpsByCompany(company.getId(), today);
+
+    if (dueFollowUps.isEmpty()) {
+      Paragraph noFollowUps = new Paragraph("No follow-ups due");
+      noFollowUps.getStyle().set("color", "var(--lumo-success-color)");
+      content.add(noFollowUps);
+
+      Paragraph allClear = new Paragraph("All contact follow-ups are up to date");
+      allClear
+          .getStyle()
+          .set("color", "var(--lumo-secondary-text-color)")
+          .set("font-size", "var(--lumo-font-size-xs)")
+          .set("margin", "0");
+      content.add(allClear);
+    } else {
+      // Show count with warning styling
+      HorizontalLayout countRow = new HorizontalLayout();
+      countRow.setWidthFull();
+      countRow.setJustifyContentMode(JustifyContentMode.BETWEEN);
+      countRow.setPadding(false);
+      countRow.setSpacing(false);
+
+      Span countLabel = new Span("Due follow-ups");
+      countLabel.getStyle().set("font-size", "var(--lumo-font-size-s)");
+
+      Span countValue = new Span(String.valueOf(dueFollowUps.size()));
+      countValue
+          .getStyle()
+          .set("font-size", "var(--lumo-font-size-xl)")
+          .set("font-weight", "600")
+          .set("color", "var(--lumo-warning-color)");
+
+      countRow.add(countLabel, countValue);
+      content.add(countRow);
+
+      // Show up to 3 follow-ups with contact names and dates
+      int displayCount = Math.min(3, dueFollowUps.size());
+      for (int i = 0; i < displayCount; i++) {
+        ContactNote note = dueFollowUps.get(i);
+        HorizontalLayout followUpRow = new HorizontalLayout();
+        followUpRow.setWidthFull();
+        followUpRow.setJustifyContentMode(JustifyContentMode.BETWEEN);
+        followUpRow.setPadding(false);
+        followUpRow.setSpacing(false);
+
+        String contactName =
+            note.getContact() != null ? note.getContact().getName() : "Unknown Contact";
+        if (contactName.length() > 20) {
+          contactName = contactName.substring(0, 17) + "...";
+        }
+
+        Span nameSpan = new Span(contactName);
+        nameSpan
+            .getStyle()
+            .set("font-size", "var(--lumo-font-size-xs)")
+            .set("color", "var(--lumo-secondary-text-color)");
+
+        // Format the follow-up date with overdue indicator
+        LocalDate followUpDate = note.getFollowUpDate();
+        long daysOverdue = java.time.temporal.ChronoUnit.DAYS.between(followUpDate, today);
+
+        String dateText;
+        String dateColor;
+        if (daysOverdue == 0) {
+          dateText = "Today";
+          dateColor = "var(--lumo-warning-color)";
+        } else if (daysOverdue > 0) {
+          dateText = daysOverdue + " day" + (daysOverdue == 1 ? "" : "s") + " overdue";
+          dateColor = "var(--lumo-error-color)";
+        } else {
+          dateText = followUpDate.format(dateFormatter);
+          dateColor = "var(--lumo-secondary-text-color)";
+        }
+
+        Span dateSpan = new Span(dateText);
+        dateSpan.getStyle().set("font-size", "var(--lumo-font-size-xs)").set("color", dateColor);
+
+        followUpRow.add(nameSpan, dateSpan);
+        content.add(followUpRow);
+      }
+
+      if (dueFollowUps.size() > 3) {
+        Paragraph more = new Paragraph("+" + (dueFollowUps.size() - 3) + " more...");
+        more.getStyle()
+            .set("font-size", "var(--lumo-font-size-xs)")
+            .set("color", "var(--lumo-secondary-text-color)")
+            .set("margin", "0");
+        content.add(more);
+      }
+
+      // Add note about checking contacts
+      Div divider = new Div();
+      divider
+          .getStyle()
+          .set("border-top", "1px solid var(--lumo-contrast-10pct)")
+          .set("margin", "var(--lumo-space-s) 0");
+      content.add(divider);
+
+      Paragraph note = new Paragraph("Check Contacts for notes");
+      note.getStyle()
+          .set("color", "var(--lumo-secondary-text-color)")
+          .set("font-size", "var(--lumo-font-size-xs)")
+          .set("margin", "0");
+      content.add(note);
+    }
+
+    // Status info
+    Paragraph status = new Paragraph("Due today or earlier");
+    status
+        .getStyle()
+        .set("color", "var(--lumo-secondary-text-color)")
+        .set("font-size", "var(--lumo-font-size-xs)")
+        .set("margin-top", "auto")
+        .set("margin-bottom", "0");
+    content.add(status);
 
     return tile;
   }
