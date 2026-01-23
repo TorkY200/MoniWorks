@@ -50,7 +50,8 @@
 - **Phase 42 Credit Note Voiding COMPLETE** - Tag: 0.5.4
 - **Phase 44 Split Transaction for Bank Reconciliation COMPLETE** - Tag: 0.5.6
 - **Phase 45 Allocation Rule Enhancements COMPLETE** - Tag: 0.5.7
-- All 219 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 24)
+- **Phase 46 Debit Notes for Supplier Bills COMPLETE** - Tag: 0.5.8
+- All 234 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 24, SupplierBillServiceTest: 15)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
 - Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql, V14__statement_runs.sql, V15__additional_permissions.sql, V16__user_security_level.sql, V17__user_invitations.sql, V18__credit_notes.sql, V19__reconciliation_match.sql, V20__ledger_entry_reconciliation.sql, V21__allocation_rule_amount_range.sql
@@ -1248,6 +1249,52 @@ Per specs, Release 1 must deliver:
 - [x] All 219 tests passing (AllocationRuleTest: 24)
 - [x] No forbidden markers
 
+### Phase 46: Debit Notes for Supplier Bills (COMPLETE) - Tag: 0.5.8
+- [x] Debit Note entity support (spec 10)
+  - Added BillType enum (BILL, DEBIT_NOTE) to SupplierBill entity
+  - Added type field and originalBill reference to SupplierBill
+  - Created V22__debit_notes.sql migration adding bill_type and original_bill_id columns
+  - Added helper methods: isDebitNote(), isBill() to SupplierBill entity
+- [x] Debit Note service methods (spec 10)
+  - Added generateDebitNoteNumber() using DN-{originalNumber} pattern with suffix for multiples
+  - Added createDebitNote() to create draft debit note against posted bill
+  - Supports full debit (copies all lines) or partial debit (empty draft for manual entry)
+  - Added postDebitNote() that posts reversed ledger entries:
+    - Debit AP control account (reduces payable)
+    - Credit expense accounts (reduces expense)
+    - Credit GST paid (reduces input tax)
+  - Validates debit note amount doesn't exceed bill remaining balance
+  - Debit note total automatically reduces original bill balance
+  - Added voidDebitNote() method with audit trail
+  - Added findDebitNotesForBill() to find all debit notes for a bill
+  - Added findByOriginalBill() to SupplierBillRepository
+- [x] Debit Note UI (spec 10)
+  - Added "Debit Note" button on posted bills in SupplierBillsView
+  - Create Debit Note dialog with full/partial debit options
+  - Bill detail shows "DEBIT NOTE" type badge for debit notes
+  - Shows link to original bill for debit notes
+  - Shows list of issued debit notes for bills
+  - Post button correctly calls postDebitNote() for debit notes
+  - Void button correctly calls voidDebitNote() for debit notes
+- [x] SupplierBillServiceTest with 15 unit tests covering:
+  - Create full debit note success
+  - Create partial debit note (empty draft)
+  - Cannot create debit note against draft bill
+  - Cannot create debit note against another debit note
+  - Second debit note gets incremented suffix
+  - Post debit note posts reversed entries
+  - Cannot post debit note exceeding bill balance
+  - Cannot post regular bill as debit note
+  - Cannot post already-posted debit note
+  - Cannot post debit note with no lines
+  - Find debit notes for bill
+  - Void debit note voids successfully
+  - Cannot void non-debit-note
+  - Cannot void draft debit note
+  - Void debit note without posted transaction still voids
+- [x] All 234 tests passing (SupplierBillServiceTest: 15)
+- [x] No forbidden markers
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -1324,6 +1371,7 @@ Per specs, Release 1 must deliver:
 - Overpayment handling: ReceivableAllocationService and PayableAllocationService allow allocations exceeding invoice/bill balance - creates negative balance (customer/supplier credit)
 - Split transaction pattern: Use Java records for validated DTOs (SplitAllocation), with Objects.requireNonNull and validation in compact constructor; BankFeedItem.SPLIT status is separate from MATCHED/CREATED to distinguish split allocations
 - AllocationRule.matches() now has overloaded version matches(description, amount) that checks both description and amount range; uses absolute value for amount comparison to handle both inflows and outflows
+- Debit notes for supplier bills mirror credit notes for invoices: BillType.DEBIT_NOTE uses DN- prefix, originalBill reference, reversed journal entries (DR AP, CR Expense, CR GST Paid)
 
 ## Technical Notes
 - Build: `./mvnw compile`

@@ -11,18 +11,22 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.application.domain.*;
 import com.example.application.domain.SupplierBill.BillStatus;
+import com.example.application.domain.SupplierBill.BillType;
 import com.example.application.repository.SupplierBillLineRepository;
 import com.example.application.repository.SupplierBillRepository;
 import com.example.application.repository.TaxCodeRepository;
 
 /**
- * Service for managing supplier bills (A/P).
+ * Service for managing supplier bills and debit notes (A/P).
  *
  * <p>Key workflows: 1. Create draft bill → Add lines → Post (post to ledger) 2. Void bill
- * (reversal) for posted bills
+ * (reversal) for posted bills 3. Create debit note against a posted bill
  *
  * <p>Posting a bill creates ledger entries: - Credit AP control account (Liability) - Debit
  * expense/asset accounts (per line) - Debit GST paid/Input Tax account (if applicable)
+ *
+ * <p>Posting a debit note creates REVERSED entries: - Debit AP control account (reduces payable) -
+ * Credit expense accounts (reduces expense) - Credit GST paid (reduces input tax)
  */
 @Service
 @Transactional
@@ -123,6 +127,22 @@ public class SupplierBillService {
       }
     }
     return "BILL-" + (maxNumber + 1);
+  }
+
+  /**
+   * Generates a debit note number based on the original bill number. Uses DN-{originalNumber}
+   * pattern.
+   */
+  public String generateDebitNoteNumber(Company company, SupplierBill originalBill) {
+    String baseNumber = "DN-" + originalBill.getBillNumber();
+    // Check if this number exists, if so append a suffix
+    String finalNumber = baseNumber;
+    int suffix = 1;
+    while (billRepository.existsByCompanyAndBillNumber(company, finalNumber)) {
+      finalNumber = baseNumber + "-" + suffix;
+      suffix++;
+    }
+    return finalNumber;
   }
 
   /** Adds a line to a draft bill. */
@@ -358,6 +378,253 @@ public class SupplierBillService {
         "Voided bill " + bill.getBillNumber() + (reason != null ? ": " + reason : ""));
 
     return bill;
+  }
+
+  /**
+   * Creates a draft debit note against a posted bill. Debit notes can be for the full amount or
+   * partial (user can adjust lines).
+   *
+   * @param originalBill The bill to debit
+   * @param createdBy The user creating the debit note
+   * @param fullDebit If true, copies all lines from the original bill
+   * @return The draft debit note
+   */
+  public SupplierBill createDebitNote(
+      SupplierBill originalBill, User createdBy, boolean fullDebit) {
+    if (!originalBill.isPosted()) {
+      throw new IllegalStateException("Can only create debit notes against posted bills");
+    }
+
+    if (originalBill.isDebitNote()) {
+      throw new IllegalStateException("Cannot create a debit note against another debit note");
+    }
+
+    Company company = originalBill.getCompany();
+    String debitNoteNumber = generateDebitNoteNumber(company, originalBill);
+
+    SupplierBill debitNote = new SupplierBill();
+    debitNote.setCompany(company);
+    debitNote.setBillNumber(debitNoteNumber);
+    debitNote.setContact(originalBill.getContact());
+    debitNote.setBillDate(LocalDate.now());
+    debitNote.setDueDate(LocalDate.now()); // Debit notes are due immediately
+    debitNote.setType(BillType.DEBIT_NOTE);
+    debitNote.setOriginalBill(originalBill);
+    debitNote.setCreatedBy(createdBy);
+    debitNote.setCurrency(originalBill.getCurrency());
+    debitNote.setSupplierReference("Debit for bill " + originalBill.getBillNumber());
+
+    debitNote = billRepository.save(debitNote);
+
+    // If full debit, copy all lines from the original bill
+    if (fullDebit) {
+      for (SupplierBillLine originalLine : originalBill.getLines()) {
+        SupplierBillLine debitLine =
+            new SupplierBillLine(
+                originalLine.getAccount(), originalLine.getQuantity(), originalLine.getUnitPrice());
+        debitLine.setProduct(originalLine.getProduct());
+        debitLine.setDescription(originalLine.getDescription());
+        debitLine.setTaxCode(originalLine.getTaxCode());
+        debitLine.setTaxRate(originalLine.getTaxRate());
+        debitLine.setDepartment(originalLine.getDepartment());
+        debitLine.calculateTotals();
+        debitNote.addLine(debitLine);
+      }
+      debitNote.recalculateTotals();
+      debitNote = billRepository.save(debitNote);
+    }
+
+    auditService.logEvent(
+        company,
+        createdBy,
+        "DEBIT_NOTE_CREATED",
+        "SupplierBill",
+        debitNote.getId(),
+        "Created debit note " + debitNoteNumber + " against bill " + originalBill.getBillNumber());
+
+    return debitNote;
+  }
+
+  /**
+   * Posts a debit note, posting it to the ledger with reversed entries. Creates a JOURNAL
+   * transaction with: - Debit: AP control account for total amount (reduces payable) - Credit:
+   * Expense accounts for each line's net amount (reduces expense) - Credit: GST paid for total tax
+   * (reduces input tax)
+   */
+  public SupplierBill postDebitNote(SupplierBill debitNote, User actor) {
+    if (!debitNote.isDebitNote()) {
+      throw new IllegalStateException("This is not a debit note");
+    }
+
+    if (!debitNote.isDraft()) {
+      throw new IllegalStateException("Debit note is not in draft status");
+    }
+
+    if (debitNote.getLines().isEmpty()) {
+      throw new IllegalStateException("Debit note has no lines");
+    }
+
+    Company company = debitNote.getCompany();
+    SupplierBill originalBill = debitNote.getOriginalBill();
+
+    // Validate debit note amount doesn't exceed remaining balance on original bill
+    BigDecimal remainingBalance = originalBill.getBalance();
+    if (debitNote.getTotal().compareTo(remainingBalance) > 0) {
+      throw new IllegalStateException(
+          "Debit note amount ($"
+              + debitNote.getTotal()
+              + ") exceeds bill remaining balance ($"
+              + remainingBalance
+              + ")");
+    }
+
+    // Find AP control account
+    Account apAccount =
+        accountService
+            .findByCompanyAndCode(company, AP_ACCOUNT_CODE)
+            .orElseThrow(
+                () ->
+                    new IllegalStateException("AP control account not found: " + AP_ACCOUNT_CODE));
+
+    // Create the posting transaction - REVERSED from normal bill
+    String description =
+        "Debit Note " + debitNote.getBillNumber() + " - " + debitNote.getContact().getName();
+    Transaction transaction =
+        transactionService.createTransaction(
+            company,
+            Transaction.TransactionType.JOURNAL,
+            debitNote.getBillDate(),
+            description,
+            actor);
+    transaction.setReference(debitNote.getBillNumber());
+
+    // DEBIT AP for the total amount (reduces payable)
+    TransactionLine apLine =
+        new TransactionLine(
+            apAccount, debitNote.getTotal(), TransactionLine.Direction.DEBIT // Reversed from bill
+            );
+    apLine.setMemo("DR for debit note " + debitNote.getBillNumber());
+    transaction.addLine(apLine);
+
+    // CREDIT expense accounts for each line (reduces expense)
+    for (SupplierBillLine debitLine : debitNote.getLines()) {
+      TransactionLine expenseLine =
+          new TransactionLine(
+              debitLine.getAccount(),
+              debitLine.getLineTotal(),
+              TransactionLine.Direction.CREDIT // Reversed from bill
+              );
+      expenseLine.setTaxCode(debitLine.getTaxCode());
+      expenseLine.setDepartment(debitLine.getDepartment());
+      expenseLine.setMemo(debitLine.getDescription());
+      transaction.addLine(expenseLine);
+    }
+
+    // CREDIT GST paid if there's any tax (reduces input tax)
+    if (debitNote.getTaxTotal().compareTo(BigDecimal.ZERO) > 0) {
+      Account gstAccount =
+          accountService
+              .findByCompanyAndCode(company, GST_PAID_CODE)
+              .orElseThrow(
+                  () -> new IllegalStateException("GST paid account not found: " + GST_PAID_CODE));
+
+      TransactionLine gstLine =
+          new TransactionLine(
+              gstAccount,
+              debitNote.getTaxTotal(),
+              TransactionLine.Direction.CREDIT // Reversed from bill
+              );
+      gstLine.setMemo("GST on debit note " + debitNote.getBillNumber());
+      transaction.addLine(gstLine);
+    }
+
+    transactionService.save(transaction);
+
+    // Post the transaction to create ledger entries
+    transaction = postingService.postTransaction(transaction, actor);
+
+    // Update debit note status
+    debitNote.setStatus(BillStatus.POSTED);
+    debitNote.setPostedAt(Instant.now());
+    debitNote.setPostedTransaction(transaction);
+    debitNote = billRepository.save(debitNote);
+
+    // Update the original bill's paid amount (debit note reduces balance)
+    BigDecimal newAmountPaid = originalBill.getAmountPaid().add(debitNote.getTotal());
+    originalBill.setAmountPaid(newAmountPaid);
+    billRepository.save(originalBill);
+
+    auditService.logEvent(
+        company,
+        actor,
+        "DEBIT_NOTE_POSTED",
+        "SupplierBill",
+        debitNote.getId(),
+        "Posted debit note "
+            + debitNote.getBillNumber()
+            + " for $"
+            + debitNote.getTotal()
+            + " against bill "
+            + originalBill.getBillNumber());
+
+    return debitNote;
+  }
+
+  /**
+   * Voids a posted debit note by creating a reversal transaction. Sets the debit note status to
+   * VOID and adjusts the original bill's amountPaid.
+   *
+   * @param debitNote The debit note to void
+   * @param actor The user performing the action
+   * @param reason Optional reason for voiding
+   * @return The voided debit note
+   */
+  public SupplierBill voidDebitNote(SupplierBill debitNote, User actor, String reason) {
+    if (!debitNote.isDebitNote()) {
+      throw new IllegalStateException("This is not a debit note");
+    }
+
+    if (!debitNote.isPosted()) {
+      throw new IllegalStateException("Can only void posted debit notes");
+    }
+
+    // Create reversal of the posted transaction
+    Transaction postedTransaction = debitNote.getPostedTransaction();
+    if (postedTransaction != null) {
+      postingService.reverseTransaction(postedTransaction, actor, reason);
+    }
+
+    // Update the original bill's amountPaid (remove the debit)
+    SupplierBill originalBill = debitNote.getOriginalBill();
+    if (originalBill != null) {
+      BigDecimal newAmountPaid = originalBill.getAmountPaid().subtract(debitNote.getTotal());
+      // Ensure we don't go negative (shouldn't happen but defensive)
+      if (newAmountPaid.compareTo(BigDecimal.ZERO) < 0) {
+        newAmountPaid = BigDecimal.ZERO;
+      }
+      originalBill.setAmountPaid(newAmountPaid);
+      billRepository.save(originalBill);
+    }
+
+    // Update debit note status
+    debitNote.setStatus(BillStatus.VOID);
+    debitNote = billRepository.save(debitNote);
+
+    auditService.logEvent(
+        debitNote.getCompany(),
+        actor,
+        "DEBIT_NOTE_VOIDED",
+        "SupplierBill",
+        debitNote.getId(),
+        "Voided debit note " + debitNote.getBillNumber() + (reason != null ? ": " + reason : ""));
+
+    return debitNote;
+  }
+
+  /** Finds all debit notes for a specific bill. */
+  @Transactional(readOnly = true)
+  public List<SupplierBill> findDebitNotesForBill(SupplierBill originalBill) {
+    return billRepository.findByOriginalBill(originalBill);
   }
 
   /**

@@ -12,9 +12,10 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
- * Represents a supplier bill (purchase invoice) received from a supplier. Bills follow a workflow:
- * DRAFT → POSTED → VOID Posting a bill creates ledger entries (AP credit, Expense debit, Input Tax
- * debit). Voiding is done via reversal patterns.
+ * Represents a supplier bill (purchase invoice) or debit note received from a supplier. Bills
+ * follow a workflow: DRAFT → POSTED → VOID Posting a bill creates ledger entries (AP credit,
+ * Expense debit, Input Tax debit). Debit notes are created against original bills with reversed
+ * entries. Voiding is done via reversal patterns.
  */
 @Entity
 @Table(
@@ -26,6 +27,11 @@ public class SupplierBill {
     DRAFT, // Can be edited
     POSTED, // Posted to ledger, immutable
     VOID // Reversed/cancelled
+  }
+
+  public enum BillType {
+    BILL, // Standard supplier bill
+    DEBIT_NOTE // Debit note/adjustment reducing payable
   }
 
   @Id
@@ -59,6 +65,16 @@ public class SupplierBill {
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 10)
   private BillStatus status = BillStatus.DRAFT;
+
+  @NotNull
+  @Enumerated(EnumType.STRING)
+  @Column(name = "bill_type", nullable = false, length = 15)
+  private BillType type = BillType.BILL;
+
+  // For debit notes, reference to the original bill being debited
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "original_bill_id")
+  private SupplierBill originalBill;
 
   @Size(max = 3)
   @Column(length = 3)
@@ -155,6 +171,14 @@ public class SupplierBill {
     return status == BillStatus.VOID;
   }
 
+  public boolean isDebitNote() {
+    return type == BillType.DEBIT_NOTE;
+  }
+
+  public boolean isBill() {
+    return type == BillType.BILL;
+  }
+
   /** Recalculates totals from line items. Should be called after modifying lines. */
   public void recalculateTotals() {
     subtotal = BigDecimal.ZERO;
@@ -236,6 +260,22 @@ public class SupplierBill {
 
   public void setStatus(BillStatus status) {
     this.status = status;
+  }
+
+  public BillType getType() {
+    return type;
+  }
+
+  public void setType(BillType type) {
+    this.type = type;
+  }
+
+  public SupplierBill getOriginalBill() {
+    return originalBill;
+  }
+
+  public void setOriginalBill(SupplierBill originalBill) {
+    this.originalBill = originalBill;
   }
 
   public String getCurrency() {

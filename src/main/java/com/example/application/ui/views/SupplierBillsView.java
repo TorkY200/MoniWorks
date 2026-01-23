@@ -221,6 +221,16 @@ public class SupplierBillsView extends VerticalLayout implements BeforeEnterObse
     return badge;
   }
 
+  private Span createTypeBadge(SupplierBill bill) {
+    if (bill.isDebitNote()) {
+      Span badge = new Span("DEBIT NOTE");
+      badge.getElement().getThemeList().add("badge");
+      badge.getElement().getThemeList().add("contrast");
+      return badge;
+    }
+    return null;
+  }
+
   private HorizontalLayout createToolbar() {
     H2 title = new H2("Supplier Bills");
 
@@ -320,13 +330,20 @@ public class SupplierBillsView extends VerticalLayout implements BeforeEnterObse
     detailLayout.setAlignItems(FlexComponent.Alignment.STRETCH);
     detailLayout.setJustifyContentMode(FlexComponent.JustifyContentMode.START);
 
-    // Header with bill number and status
+    // Header with bill number, type, and status
     HorizontalLayout header = new HorizontalLayout();
     header.setWidthFull();
     header.setAlignItems(FlexComponent.Alignment.CENTER);
 
     H3 billLabel = new H3("Bill #" + bill.getBillNumber());
-    header.add(billLabel, createStatusBadge(bill));
+    header.add(billLabel);
+
+    // Show type badge for debit notes
+    Span typeBadge = createTypeBadge(bill);
+    if (typeBadge != null) {
+      header.add(typeBadge);
+    }
+    header.add(createStatusBadge(bill));
 
     // Action buttons
     HorizontalLayout actions = new HorizontalLayout();
@@ -341,17 +358,37 @@ public class SupplierBillsView extends VerticalLayout implements BeforeEnterObse
       addLineButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
       addLineButton.addClickListener(e -> openAddLineDialog(bill));
 
-      Button postButton = new Button("Post Bill", VaadinIcon.CHECK.create());
-      postButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);
-      postButton.addClickListener(e -> postBill(bill));
-
-      actions.add(editButton, addLineButton, postButton);
+      // Different post action for debit notes
+      if (bill.isDebitNote()) {
+        Button postButton = new Button("Post Debit Note", VaadinIcon.CHECK.create());
+        postButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);
+        postButton.addClickListener(e -> postDebitNote(bill));
+        actions.add(editButton, addLineButton, postButton);
+      } else {
+        Button postButton = new Button("Post Bill", VaadinIcon.CHECK.create());
+        postButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);
+        postButton.addClickListener(e -> postBill(bill));
+        actions.add(editButton, addLineButton, postButton);
+      }
     }
 
     if (bill.isPosted() && !bill.isPaid()) {
+      // Debit note button for posted regular bills (not for debit notes themselves)
+      if (bill.isBill()) {
+        Button debitNoteButton = new Button("Debit Note", VaadinIcon.CREDIT_CARD.create());
+        debitNoteButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        debitNoteButton.addClickListener(e -> openCreateDebitNoteDialog(bill));
+        actions.add(debitNoteButton);
+      }
+
+      // Void button - use different method for debit notes
       Button voidButton = new Button("Void", VaadinIcon.BAN.create());
       voidButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_ERROR);
-      voidButton.addClickListener(e -> confirmVoidBill(bill));
+      if (bill.isDebitNote()) {
+        voidButton.addClickListener(e -> confirmVoidDebitNote(bill));
+      } else {
+        voidButton.addClickListener(e -> confirmVoidBill(bill));
+      }
       actions.add(voidButton);
     }
 
@@ -361,6 +398,26 @@ public class SupplierBillsView extends VerticalLayout implements BeforeEnterObse
     header.expand(spacer);
 
     detailLayout.add(header);
+
+    // Show original bill link for debit notes
+    if (bill.isDebitNote() && bill.getOriginalBill() != null) {
+      SupplierBill originalBill = bill.getOriginalBill();
+      HorizontalLayout linkRow = new HorizontalLayout();
+      linkRow.setAlignItems(FlexComponent.Alignment.CENTER);
+      linkRow.getStyle().set("margin-bottom", "var(--lumo-space-s)");
+
+      Span linkLabel = new Span("Debit note for bill: ");
+      Button linkButton = new Button(originalBill.getBillNumber());
+      linkButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_SMALL);
+      linkButton.addClickListener(
+          e -> {
+            grid.select(originalBill);
+            showBillDetail(originalBill);
+          });
+
+      linkRow.add(linkLabel, linkButton);
+      detailLayout.add(linkRow);
+    }
 
     // Bill info section
     FormLayout infoForm = new FormLayout();
@@ -488,6 +545,45 @@ public class SupplierBillsView extends VerticalLayout implements BeforeEnterObse
 
         allocGrid.setItems(allocations);
         detailLayout.add(allocGrid);
+      }
+    }
+
+    // Debit notes section (for posted regular bills)
+    if (bill.isPosted() && bill.isBill()) {
+      List<SupplierBill> debitNotes = billService.findDebitNotesForBill(bill);
+      if (!debitNotes.isEmpty()) {
+        H3 debitNotesHeader = new H3("Debit Notes");
+        detailLayout.add(debitNotesHeader);
+
+        Grid<SupplierBill> debitNotesGrid = new Grid<>();
+        debitNotesGrid.setHeight("120px");
+        debitNotesGrid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES, GridVariant.LUMO_COMPACT);
+
+        debitNotesGrid
+            .addColumn(dn -> dn.getBillDate().format(DATE_FORMATTER))
+            .setHeader("Date")
+            .setAutoWidth(true);
+
+        debitNotesGrid.addColumn(SupplierBill::getBillNumber).setHeader("Number").setFlexGrow(1);
+
+        debitNotesGrid
+            .addColumn(dn -> "$" + dn.getTotal().setScale(2).toPlainString())
+            .setHeader("Amount")
+            .setAutoWidth(true);
+
+        debitNotesGrid
+            .addComponentColumn(this::createStatusBadge)
+            .setHeader("Status")
+            .setAutoWidth(true);
+
+        debitNotesGrid.addItemClickListener(
+            event -> {
+              grid.select(event.getItem());
+              showBillDetail(event.getItem());
+            });
+
+        debitNotesGrid.setItems(debitNotes);
+        detailLayout.add(debitNotesGrid);
       }
     }
 
@@ -913,6 +1009,175 @@ public class SupplierBillsView extends VerticalLayout implements BeforeEnterObse
           } catch (Exception ex) {
             Notification.show(
                     "Error voiding bill: " + ex.getMessage(), 5000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+          }
+        });
+
+    confirm.open();
+  }
+
+  private void openCreateDebitNoteDialog(SupplierBill bill) {
+    Dialog dialog = new Dialog();
+    dialog.setHeaderTitle("Create Debit Note");
+    dialog.setWidth("500px");
+
+    VerticalLayout content = new VerticalLayout();
+    content.setPadding(false);
+
+    Span infoText =
+        new Span(
+            "Create a debit note against bill #"
+                + bill.getBillNumber()
+                + " for $"
+                + bill.getTotal().toPlainString()
+                + " (Balance: $"
+                + bill.getBalance().toPlainString()
+                + ")");
+    infoText.getStyle().set("margin-bottom", "var(--lumo-space-m)");
+    content.add(infoText);
+
+    ComboBox<String> typeCombo = new ComboBox<>("Debit Type");
+    typeCombo.setItems("Full Debit (all lines)", "Partial Debit (empty draft)");
+    typeCombo.setValue("Full Debit (all lines)");
+    typeCombo.setRequired(true);
+    typeCombo.setWidthFull();
+    content.add(typeCombo);
+
+    Span helpText = new Span();
+    helpText
+        .getStyle()
+        .set("font-style", "italic")
+        .set("color", "var(--lumo-secondary-text-color)");
+    typeCombo.addValueChangeListener(
+        e -> {
+          if ("Full Debit (all lines)".equals(e.getValue())) {
+            helpText.setText("Copies all lines from the original bill.");
+          } else {
+            helpText.setText("Creates an empty debit note for you to add lines manually.");
+          }
+        });
+    helpText.setText("Copies all lines from the original bill.");
+    content.add(helpText);
+
+    dialog.add(content);
+
+    Button createButton = new Button("Create Debit Note");
+    createButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+    createButton.addClickListener(
+        e -> {
+          try {
+            boolean fullDebit = "Full Debit (all lines)".equals(typeCombo.getValue());
+            SupplierBill debitNote =
+                billService.createDebitNote(
+                    bill, companyContextService.getCurrentUser(), fullDebit);
+
+            Notification.show(
+                    "Debit note " + debitNote.getBillNumber() + " created",
+                    3000,
+                    Notification.Position.BOTTOM_START)
+                .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+
+            dialog.close();
+            loadBills();
+            grid.select(debitNote);
+
+          } catch (Exception ex) {
+            Notification.show("Error: " + ex.getMessage(), 5000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+          }
+        });
+
+    Button cancelButton = new Button("Cancel", e -> dialog.close());
+    dialog.getFooter().add(cancelButton, createButton);
+    dialog.open();
+  }
+
+  private void postDebitNote(SupplierBill debitNote) {
+    if (debitNote.getLines().isEmpty()) {
+      Notification.show("Cannot post debit note with no lines", 3000, Notification.Position.MIDDLE)
+          .addThemeVariants(NotificationVariant.LUMO_ERROR);
+      return;
+    }
+
+    ConfirmDialog confirm = new ConfirmDialog();
+    confirm.setHeader("Post Debit Note?");
+    confirm.setText(
+        "Post debit note #"
+            + debitNote.getBillNumber()
+            + " for $"
+            + debitNote.getTotal().toPlainString()
+            + "? This will reduce the balance on bill #"
+            + debitNote.getOriginalBill().getBillNumber()
+            + ".");
+    confirm.setCancelable(true);
+    confirm.setConfirmText("Post");
+    confirm.setConfirmButtonTheme("primary success");
+
+    confirm.addConfirmListener(
+        e -> {
+          try {
+            SupplierBill posted =
+                billService.postDebitNote(debitNote, companyContextService.getCurrentUser());
+
+            Notification.show(
+                    "Debit note " + posted.getBillNumber() + " posted successfully",
+                    3000,
+                    Notification.Position.BOTTOM_START)
+                .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+
+            loadBills();
+            showBillDetail(posted);
+
+          } catch (Exception ex) {
+            Notification.show(
+                    "Error posting debit note: " + ex.getMessage(),
+                    5000,
+                    Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+          }
+        });
+
+    confirm.open();
+  }
+
+  private void confirmVoidDebitNote(SupplierBill debitNote) {
+    ConfirmDialog confirm = new ConfirmDialog();
+    confirm.setHeader("Void Debit Note?");
+    confirm.setText(
+        "Void debit note #"
+            + debitNote.getBillNumber()
+            + "? This will reverse the ledger entries and restore the balance on bill #"
+            + debitNote.getOriginalBill().getBillNumber()
+            + ". This action cannot be undone.");
+    confirm.setCancelable(true);
+    confirm.setConfirmText("Void Debit Note");
+    confirm.setConfirmButtonTheme("primary error");
+
+    TextField reasonField = new TextField("Reason (optional)");
+    reasonField.setWidthFull();
+    confirm.add(reasonField);
+
+    confirm.addConfirmListener(
+        e -> {
+          try {
+            String reason = reasonField.getValue();
+            SupplierBill voided =
+                billService.voidDebitNote(
+                    debitNote,
+                    companyContextService.getCurrentUser(),
+                    reason.isBlank() ? null : reason);
+
+            Notification.show("Debit note voided", 3000, Notification.Position.BOTTOM_START)
+                .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+
+            loadBills();
+            showBillDetail(voided);
+
+          } catch (Exception ex) {
+            Notification.show(
+                    "Error voiding debit note: " + ex.getMessage(),
+                    5000,
+                    Notification.Position.MIDDLE)
                 .addThemeVariants(NotificationVariant.LUMO_ERROR);
           }
         });

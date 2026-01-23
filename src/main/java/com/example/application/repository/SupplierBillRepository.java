@@ -99,4 +99,7 @@ public interface SupplierBillRepository extends JpaRepository<SupplierBill, Long
           + "ORDER BY b.dueDate ASC, b.contact.name ASC")
   List<SupplierBill> findPayableBillsDueBy(
       @Param("company") Company company, @Param("dueBy") LocalDate dueBy);
+
+  // Find all debit notes linked to an original bill
+  List<SupplierBill> findByOriginalBill(SupplierBill originalBill);
 }
