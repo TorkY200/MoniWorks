@@ -31,6 +31,7 @@ import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
 import com.vaadin.flow.component.html.Anchor;
+import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Span;
@@ -972,6 +973,26 @@ public class TransactionsView extends VerticalLayout implements BeforeEnterObser
     content.setPadding(false);
 
     content.add(new Span("Status: " + transaction.getStatus().name()));
+
+    // Show guidance message for posted transactions (spec 04 requirement)
+    if (transaction.getStatus() == Transaction.Status.POSTED) {
+      Div postedNotice = new Div();
+      postedNotice
+          .getStyle()
+          .set("background", "var(--lumo-primary-color-10pct)")
+          .set("border-left", "4px solid var(--lumo-primary-color)")
+          .set("padding", "var(--lumo-space-s) var(--lumo-space-m)")
+          .set("margin", "var(--lumo-space-s) 0")
+          .set("border-radius", "var(--lumo-border-radius-s)");
+      Span noticeText =
+          new Span(
+              "This transaction is posted and cannot be edited. "
+                  + "To make corrections, use the Reverse button to create a reversal transaction.");
+      noticeText.getStyle().set("font-size", "var(--lumo-font-size-s)");
+      postedNotice.add(noticeText);
+      content.add(postedNotice);
+    }
+
     content.add(
         new Span(
             "Reference: "

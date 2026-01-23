@@ -59,6 +59,7 @@
 - **Phase 52 CSV Export for All Reports COMPLETE** - Tag: 0.6.4
 - **Phase 53 Product Sticky Note Display COMPLETE** - Tag: 0.6.5
 - **Phase 54 READONLY Role UI Enforcement COMPLETE** - Tag: 0.6.6
+- **Phase 55 Posted Transaction UI Guidance COMPLETE** - Tag: 0.6.7
 - All 255 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 24, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
@@ -1480,6 +1481,24 @@ Per specs, Release 1 must deliver:
   - Debit Note/Void buttons hidden for posted bills if user lacks permission
   - PDF Export button remains visible (view-only operation)
 - [x] Fixes spec 02 acceptance criteria: "A READONLY user cannot create/edit/post transactions"
+- [x] All 255 tests passing
+- [x] No forbidden markers
+
+### Phase 55: Posted Transaction UI Guidance (COMPLETE) - Tag: 0.6.7
+- [x] Posted transaction guidance message in TransactionsView (spec 04 acceptance criteria)
+  - Added informational notice in openViewDialog() for posted transactions
+  - Styled notice box with primary color accent
+  - Message: "This transaction is posted and cannot be edited. To make corrections, use the Reverse button to create a reversal transaction."
+  - Helps users understand immutability and corrective workflow
+- [x] Spec compliance analysis completed:
+  - Verified audit event deletion prevention: No delete button in AuditEventsView, no delete methods in AuditService
+  - AuditEvent entity documented as immutable with limited setters
+  - Verified contact tax override auto-population exists in TransactionsView (already implemented in Phase 51)
+  - Verified posted transaction edit prevention: Edit button only shown for DRAFT status
+  - Dashboard security level filtering: Analyzed 6 tiles
+    - Cash Balance, This Month, Income Trend: Security-filtered ✓
+    - GST Estimate, Overdue Receivables, Overdue Payables: Not filtered but appropriate (these show invoices/bills/tax data which are not subject to account-level security per spec 02 - security levels apply to Chart of Accounts, not AR/AP documents)
+- [x] Fixes spec 04 acceptance criteria: "Editing a posted transaction is not possible; UI directs to 'Reverse / Adjust'"
 - [x] All 255 tests passing
 - [x] No forbidden markers
 
