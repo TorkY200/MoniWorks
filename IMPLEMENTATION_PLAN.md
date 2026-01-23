@@ -71,7 +71,8 @@
 - **Phase 64 Security Level Filtering & KPI CSV Import COMPLETE** - Tag: 0.7.6
 - **Phase 65 Price/Description Updates on Recurrence COMPLETE** - Tag: 0.7.7
 - **Phase 66 GST Return Export (PDF/Excel/CSV) COMPLETE** - Tag: 0.7.8
-- All 287 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 32, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21, KPIImportServiceTest: 16, RecurringTemplateServiceTest: 8)
+- **Phase 67 Attachment Company Ownership Verification COMPLETE** - Tag: 0.7.9
+- All 290 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 13, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 32, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21, KPIImportServiceTest: 16, RecurringTemplateServiceTest: 8)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
 - Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql, V14__statement_runs.sql, V15__additional_permissions.sql, V16__user_security_level.sql, V17__user_invitations.sql, V18__credit_notes.sql, V19__reconciliation_match.sql, V20__ledger_entry_reconciliation.sql, V21__allocation_rule_amount_range.sql, V22__debit_notes.sql, V23__reversal_link.sql, V24__clerk_roles.sql, V25__allocation_rule_counter_party.sql
@@ -1753,6 +1754,20 @@ Per specs, Release 1 must deliver:
   - Added Export PDF, Export Excel, Export CSV buttons to GST return view dialog
   - Uses StreamResource and Anchor for browser download
 - [x] All 287 tests passing
+- [x] No forbidden markers
+
+### Phase 67: Attachment Company Ownership Verification (COMPLETE) - Tag: 0.7.9
+- [x] Attachment Company Ownership Verification (spec 14 security)
+  - Added verifyCompanyAccess() method to AttachmentService to ensure users can only access attachments from their current company
+  - Updated getFileContent() and downloadFile() to perform company ownership verification
+  - Uses ObjectProvider<CompanyContextService> for lazy injection (avoids session scope issues at startup)
+  - Security check logs warnings for unauthorized access attempts
+  - Gracefully skips check when no CompanyContextService is available (batch jobs, tests)
+  - Added 3 new unit tests for security verification:
+    - getFileContent_DifferentCompany_ThrowsSecurityException
+    - getFileContent_NoCompanyContext_ThrowsSecurityException
+    - downloadFile_DifferentCompany_ThrowsSecurityException
+- [x] All 290 tests passing
 - [x] No forbidden markers
 
 ## Lessons Learned

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.example.application.domain.*;
@@ -33,6 +34,10 @@ class AttachmentServiceTest {
 
   @Mock private AuditService auditService;
 
+  @Mock private CompanyContextService companyContextService;
+
+  @Mock private ObjectProvider<CompanyContextService> companyContextServiceProvider;
+
   @TempDir Path tempDir;
 
   private AttachmentService attachmentService;
@@ -42,7 +47,9 @@ class AttachmentServiceTest {
 
   @BeforeEach
   void setUp() {
-    attachmentService = new AttachmentService(attachmentRepository, linkRepository, auditService);
+    attachmentService =
+        new AttachmentService(
+            attachmentRepository, linkRepository, auditService, companyContextServiceProvider);
 
     // Set the storage path to temp directory
     ReflectionTestUtils.setField(attachmentService, "storagePath", tempDir.toString());
@@ -53,6 +60,13 @@ class AttachmentServiceTest {
 
     user = new User("test@example.com", "Test User");
     user.setId(1L);
+
+    // Default to returning the mock CompanyContextService via ObjectProvider
+    lenient()
+        .when(companyContextServiceProvider.getIfAvailable())
+        .thenReturn(companyContextService);
+    // Default to returning the test company for security checks
+    lenient().when(companyContextService.getCurrentCompany()).thenReturn(company);
   }
 
   @Test
@@ -241,6 +255,7 @@ class AttachmentServiceTest {
             invocation -> {
               Attachment att = invocation.getArgument(0);
               att.setId(1L);
+              att.setCompany(company); // Ensure company is set for security check
               return att;
             });
 
@@ -326,5 +341,94 @@ class AttachmentServiceTest {
 
     // Then
     assertEquals(att1.getChecksumSha256(), att2.getChecksumSha256());
+  }
+
+  @Test
+  void getFileContent_DifferentCompany_ThrowsSecurityException() throws Exception {
+    // Given - First upload a file with company 1
+    String filename = "test.pdf";
+    String mimeType = "application/pdf";
+    byte[] content = "Test content".getBytes();
+
+    when(attachmentRepository.findByCompanyAndChecksumSha256(any(), any()))
+        .thenReturn(Optional.empty());
+    when(attachmentRepository.save(any(Attachment.class)))
+        .thenAnswer(
+            invocation -> {
+              Attachment att = invocation.getArgument(0);
+              att.setId(1L);
+              att.setCompany(company);
+              return att;
+            });
+
+    Attachment attachment =
+        attachmentService.uploadFile(company, filename, mimeType, content, user);
+
+    // Now simulate a different company trying to access
+    Company otherCompany = new Company();
+    otherCompany.setId(2L);
+    otherCompany.setName("Other Company");
+    when(companyContextService.getCurrentCompany()).thenReturn(otherCompany);
+
+    // When/Then
+    SecurityException exception =
+        assertThrows(SecurityException.class, () -> attachmentService.getFileContent(attachment));
+
+    assertTrue(exception.getMessage().contains("belongs to different company"));
+  }
+
+  @Test
+  void getFileContent_NoCompanyContext_ThrowsSecurityException() throws Exception {
+    // Given - Upload a file
+    String filename = "test.pdf";
+    String mimeType = "application/pdf";
+    byte[] content = "Test content".getBytes();
+
+    when(attachmentRepository.findByCompanyAndChecksumSha256(any(), any()))
+        .thenReturn(Optional.empty());
+    when(attachmentRepository.save(any(Attachment.class)))
+        .thenAnswer(
+            invocation -> {
+              Attachment att = invocation.getArgument(0);
+              att.setId(1L);
+              att.setCompany(company);
+              return att;
+            });
+
+    Attachment attachment =
+        attachmentService.uploadFile(company, filename, mimeType, content, user);
+
+    // Simulate provider returning CompanyContextService but no company context
+    when(companyContextServiceProvider.getIfAvailable()).thenReturn(companyContextService);
+    when(companyContextService.getCurrentCompany()).thenReturn(null);
+
+    // When/Then
+    SecurityException exception =
+        assertThrows(SecurityException.class, () -> attachmentService.getFileContent(attachment));
+
+    assertTrue(exception.getMessage().contains("No company context"));
+  }
+
+  @Test
+  void downloadFile_DifferentCompany_ThrowsSecurityException() {
+    // Given - Create an attachment owned by a different company
+    Company ownerCompany = new Company();
+    ownerCompany.setId(99L);
+    ownerCompany.setName("Owner Company");
+
+    Attachment attachment = new Attachment();
+    attachment.setId(1L);
+    attachment.setCompany(ownerCompany);
+    attachment.setStorageKey("99/2026/01/test.pdf");
+
+    when(attachmentRepository.findById(1L)).thenReturn(Optional.of(attachment));
+    when(companyContextServiceProvider.getIfAvailable()).thenReturn(companyContextService);
+    when(companyContextService.getCurrentCompany()).thenReturn(company); // Different from owner
+
+    // When/Then
+    SecurityException exception =
+        assertThrows(SecurityException.class, () -> attachmentService.downloadFile(1L));
+
+    assertTrue(exception.getMessage().contains("belongs to different company"));
   }
 }

@@ -9,6 +9,7 @@ import java.util.*;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +46,7 @@ public class AttachmentService {
   private final AttachmentRepository attachmentRepository;
   private final AttachmentLinkRepository linkRepository;
   private final AuditService auditService;
+  private final ObjectProvider<CompanyContextService> companyContextServiceProvider;
 
   @Value("${moniworks.attachments.storage-path:./data/attachments}")
   private String storagePath;
@@ -52,10 +54,12 @@ public class AttachmentService {
   public AttachmentService(
       AttachmentRepository attachmentRepository,
       AttachmentLinkRepository linkRepository,
-      AuditService auditService) {
+      AuditService auditService,
+      ObjectProvider<CompanyContextService> companyContextServiceProvider) {
     this.attachmentRepository = attachmentRepository;
     this.linkRepository = linkRepository;
     this.auditService = auditService;
+    this.companyContextServiceProvider = companyContextServiceProvider;
   }
 
   /**
@@ -171,9 +175,13 @@ public class AttachmentService {
    * @param attachment The attachment to retrieve
    * @return File content as bytes
    * @throws RuntimeException if file cannot be read or checksum mismatch
+   * @throws SecurityException if user does not have access to the attachment's company
    */
   @Transactional(readOnly = true)
   public byte[] getFileContent(Attachment attachment) {
+    // Security check: verify the user has access to the company that owns this attachment
+    verifyCompanyAccess(attachment);
+
     Path filePath = getStoragePath(attachment.getStorageKey());
 
     try {
@@ -221,10 +229,17 @@ public class AttachmentService {
    *
    * @param attachmentId The attachment ID
    * @return File content as bytes, or null if attachment not found
+   * @throws SecurityException if user does not have access to the attachment's company
    */
   @Transactional(readOnly = true)
   public byte[] downloadFile(Long attachmentId) {
-    return attachmentRepository.findById(attachmentId).map(this::getFileContent).orElse(null);
+    Optional<Attachment> attachment = attachmentRepository.findById(attachmentId);
+    if (attachment.isEmpty()) {
+      return null;
+    }
+
+    // Security check is performed inside getFileContent
+    return getFileContent(attachment.get());
   }
 
   /** Unlinks an attachment from an entity. Does not delete the attachment itself. */
@@ -312,6 +327,37 @@ public class AttachmentService {
     if (size < 1024) return size + " B";
     if (size < 1024 * 1024) return String.format("%.1f KB", size / 1024.0);
     return String.format("%.1f MB", size / (1024.0 * 1024));
+  }
+
+  /**
+   * Verifies that the current user has access to the company that owns the attachment. Throws a
+   * SecurityException if the user does not have access.
+   *
+   * @param attachment The attachment to verify access for
+   * @throws SecurityException if user does not have access to the attachment's company
+   */
+  private void verifyCompanyAccess(Attachment attachment) {
+    CompanyContextService companyContextService = companyContextServiceProvider.getIfAvailable();
+    if (companyContextService == null) {
+      // If no company context service is available (e.g., in tests or batch jobs), skip the check
+      log.debug("No CompanyContextService available, skipping company access verification");
+      return;
+    }
+
+    Company currentCompany = companyContextService.getCurrentCompany();
+    if (currentCompany == null) {
+      log.warn("Attempted to access attachment {} without company context", attachment.getId());
+      throw new SecurityException("No company context available");
+    }
+
+    if (!currentCompany.getId().equals(attachment.getCompany().getId())) {
+      log.warn(
+          "Attempted to access attachment {} belonging to company {} from company {}",
+          attachment.getId(),
+          attachment.getCompany().getId(),
+          currentCompany.getId());
+      throw new SecurityException("Access denied: attachment belongs to different company");
+    }
   }
 
   /** Get the configured storage path (for testing/diagnostics). */
