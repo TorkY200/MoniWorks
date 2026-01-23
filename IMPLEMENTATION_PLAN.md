@@ -62,6 +62,7 @@
 - **Phase 55 Posted Transaction UI Guidance COMPLETE** - Tag: 0.6.7
 - **Phase 56 Failed Recurrence Dashboard Widget COMPLETE** - Tag: 0.6.8
 - **Phase 57 AP_CLERK and AR_CLERK Role Templates COMPLETE** - Tag: 0.6.9
+- **Phase 58 Bulk Email to Contacts COMPLETE** - Tag: 0.7.0
 - All 255 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 10, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 24, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
@@ -1537,6 +1538,26 @@ Per specs, Release 1 must deliver:
     - MANAGE_CONTACTS (supplier management)
     - EXPORT_REPORTS (remittances and reports)
 - [x] Roles visible in RolesView as system roles (read-only like ADMIN, BOOKKEEPER, READONLY)
+- [x] All 255 tests passing
+- [x] No forbidden markers
+
+### Phase 58: Bulk Email to Contacts (COMPLETE) - Tag: 0.7.0
+- [x] Added bulk email functionality per spec 07 requirement: "Bulk email: select by role"
+- [x] Implementation details:
+  - Added EmailService dependency to ContactsView
+  - Added "Bulk Email" button to ContactsView toolbar
+  - Created openBulkEmailDialog() method with:
+    - Contact selection grid (multi-select) showing contacts with email addresses
+    - Respects current type filter (Customer/Supplier/Both)
+    - Filters to only active contacts with valid email addresses
+    - Select All / Deselect All buttons
+    - Selection summary showing count
+    - Email composition form (subject, body)
+    - Sends using existing EmailService.sendEmail() with EmailRequest builder pattern
+    - Progress tracking and error reporting
+    - Shows success/failure counts in results area
+    - Notification summary on completion
+- [x] Uses existing SMTP infrastructure from Phase 39
 - [x] All 255 tests passing
 - [x] No forbidden markers
 

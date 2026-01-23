@@ -15,6 +15,7 @@ import com.example.application.service.AccountService;
 import com.example.application.service.CompanyContextService;
 import com.example.application.service.ContactImportService;
 import com.example.application.service.ContactService;
+import com.example.application.service.EmailService;
 import com.example.application.service.SavedViewService;
 import com.example.application.ui.MainLayout;
 import com.example.application.ui.components.GridCustomizer;
@@ -64,6 +65,7 @@ public class ContactsView extends VerticalLayout {
   private final CompanyContextService companyContextService;
   private final SavedViewService savedViewService;
   private final ContactImportService contactImportService;
+  private final EmailService emailService;
 
   private final Grid<Contact> grid = new Grid<>();
   private final TextField searchField = new TextField();
@@ -83,12 +85,14 @@ public class ContactsView extends VerticalLayout {
       AccountService accountService,
       CompanyContextService companyContextService,
       SavedViewService savedViewService,
-      ContactImportService contactImportService) {
+      ContactImportService contactImportService,
+      EmailService emailService) {
     this.contactService = contactService;
     this.accountService = accountService;
     this.companyContextService = companyContextService;
     this.savedViewService = savedViewService;
     this.contactImportService = contactImportService;
+    this.emailService = emailService;
 
     addClassName("contacts-view");
     setSizeFull();
@@ -213,6 +217,11 @@ public class ContactsView extends VerticalLayout {
     importButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
     importButton.addClickListener(e -> openImportDialog());
 
+    Button bulkEmailButton = new Button("Bulk Email", VaadinIcon.ENVELOPE_O.create());
+    bulkEmailButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+    bulkEmailButton.addClickListener(e -> openBulkEmailDialog());
+    bulkEmailButton.getElement().setAttribute("title", "Send email to multiple contacts");
+
     Button refreshButton = new Button(VaadinIcon.REFRESH.create());
     refreshButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
     refreshButton.addClickListener(e -> loadContacts());
@@ -222,7 +231,7 @@ public class ContactsView extends VerticalLayout {
     if (gridCustomizer != null) {
       filters.add(gridCustomizer);
     }
-    filters.add(addButton, importButton, refreshButton);
+    filters.add(addButton, importButton, bulkEmailButton, refreshButton);
     filters.setAlignItems(FlexComponent.Alignment.BASELINE);
 
     HorizontalLayout toolbar = new HorizontalLayout(title, filters);
@@ -1005,6 +1014,273 @@ public class ContactsView extends VerticalLayout {
 
     dialog.add(layout);
     dialog.getFooter().add(cancelButton, importButton);
+    dialog.open();
+  }
+
+  /**
+   * Opens a dialog for sending bulk emails to contacts. Users can select which contacts to include,
+   * compose a subject and message, and send to all selected contacts with valid email addresses.
+   */
+  private void openBulkEmailDialog() {
+    Company company = companyContextService.getCurrentCompany();
+    User user = companyContextService.getCurrentUser();
+    if (company == null || user == null) {
+      Notification.show("Please select a company first", 3000, Notification.Position.MIDDLE)
+          .addThemeVariants(NotificationVariant.LUMO_WARNING);
+      return;
+    }
+
+    Dialog dialog = new Dialog();
+    dialog.setHeaderTitle("Bulk Email to Contacts");
+    dialog.setWidth("800px");
+    dialog.setHeight("700px");
+
+    VerticalLayout layout = new VerticalLayout();
+    layout.setPadding(false);
+    layout.setSpacing(true);
+    layout.setSizeFull();
+
+    // Get contacts with email addresses, applying current filters
+    String search = searchField.getValue();
+    String typeFilterValue = typeFilter.getValue();
+
+    List<Contact> allContacts;
+    if (search != null && !search.isBlank()) {
+      allContacts = contactService.searchByCompany(company, search);
+    } else {
+      allContacts = contactService.findByCompany(company);
+    }
+
+    // Filter by type if not "All"
+    if (typeFilterValue != null && !"All".equals(typeFilterValue)) {
+      ContactType filterType = ContactType.valueOf(typeFilterValue.toUpperCase());
+      allContacts =
+          allContacts.stream()
+              .filter(c -> c.getType() == filterType || c.getType() == ContactType.BOTH)
+              .toList();
+    }
+
+    // Filter to only contacts with valid email addresses
+    List<Contact> contactsWithEmail =
+        allContacts.stream()
+            .filter(c -> c.getEmail() != null && !c.getEmail().isBlank())
+            .filter(Contact::isActive)
+            .toList();
+
+    if (contactsWithEmail.isEmpty()) {
+      Notification.show(
+              "No contacts with email addresses found. Please add email addresses to contacts first.",
+              5000,
+              Notification.Position.MIDDLE)
+          .addThemeVariants(NotificationVariant.LUMO_WARNING);
+      return;
+    }
+
+    // Instructions
+    Span instructions =
+        new Span(
+            String.format(
+                "Select contacts to email. Found %d contacts with email addresses (based on current filters).",
+                contactsWithEmail.size()));
+    instructions.getStyle().set("color", "var(--lumo-secondary-text-color)");
+
+    // Contact selection grid
+    Grid<Contact> contactGrid = new Grid<>();
+    contactGrid.setSelectionMode(Grid.SelectionMode.MULTI);
+    contactGrid.setItems(contactsWithEmail);
+    contactGrid.setHeight("200px");
+    contactGrid.addColumn(Contact::getName).setHeader("Name").setAutoWidth(true);
+    contactGrid.addColumn(Contact::getEmail).setHeader("Email").setAutoWidth(true);
+    contactGrid
+        .addColumn(c -> c.getType().name())
+        .setHeader("Type")
+        .setWidth("100px")
+        .setFlexGrow(0);
+
+    // Select all by default
+    contactGrid.asMultiSelect().select(contactsWithEmail);
+
+    // Selection summary
+    Span selectionSummary = new Span(contactsWithEmail.size() + " contacts selected");
+    selectionSummary.getStyle().set("font-weight", "bold");
+
+    contactGrid
+        .asMultiSelect()
+        .addValueChangeListener(
+            e -> {
+              int count = e.getValue().size();
+              selectionSummary.setText(count + " contact" + (count != 1 ? "s" : "") + " selected");
+            });
+
+    // Select/Deselect all buttons
+    Button selectAllButton = new Button("Select All");
+    selectAllButton.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
+    selectAllButton.addClickListener(e -> contactGrid.asMultiSelect().select(contactsWithEmail));
+
+    Button deselectAllButton = new Button("Deselect All");
+    deselectAllButton.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
+    deselectAllButton.addClickListener(e -> contactGrid.asMultiSelect().deselectAll());
+
+    HorizontalLayout selectionControls =
+        new HorizontalLayout(selectAllButton, deselectAllButton, selectionSummary);
+    selectionControls.setAlignItems(FlexComponent.Alignment.CENTER);
+
+    // Email composition form
+    H3 composeHeader = new H3("Compose Email");
+    composeHeader.getStyle().set("margin-top", "var(--lumo-space-m)");
+    composeHeader.getStyle().set("margin-bottom", "0");
+
+    TextField subjectField = new TextField("Subject");
+    subjectField.setWidthFull();
+    subjectField.setRequired(true);
+    subjectField.setPlaceholder("Enter email subject...");
+
+    TextArea bodyField = new TextArea("Message");
+    bodyField.setWidthFull();
+    bodyField.setHeight("150px");
+    bodyField.setRequired(true);
+    bodyField.setPlaceholder("Enter your message...");
+
+    // Results area for showing send progress
+    VerticalLayout resultsArea = new VerticalLayout();
+    resultsArea.setPadding(false);
+    resultsArea.setSpacing(false);
+    resultsArea.setVisible(false);
+
+    layout.add(
+        instructions,
+        contactGrid,
+        selectionControls,
+        composeHeader,
+        subjectField,
+        bodyField,
+        resultsArea);
+
+    // Send button
+    Button sendButton = new Button("Send Emails", VaadinIcon.ENVELOPE.create());
+    sendButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+    sendButton.addClickListener(
+        e -> {
+          // Validate
+          if (subjectField.isEmpty()) {
+            Notification.show("Please enter a subject", 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_WARNING);
+            return;
+          }
+          if (bodyField.isEmpty()) {
+            Notification.show("Please enter a message", 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_WARNING);
+            return;
+          }
+
+          var selectedContacts = contactGrid.asMultiSelect().getSelectedItems();
+          if (selectedContacts.isEmpty()) {
+            Notification.show(
+                    "Please select at least one contact", 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_WARNING);
+            return;
+          }
+
+          // Disable send button during sending
+          sendButton.setEnabled(false);
+          sendButton.setText("Sending...");
+
+          // Send emails
+          String subject = subjectField.getValue();
+          String body = bodyField.getValue();
+
+          int successCount = 0;
+          int failCount = 0;
+          StringBuilder errors = new StringBuilder();
+
+          for (Contact contact : selectedContacts) {
+            try {
+              var request =
+                  EmailService.EmailRequest.builder()
+                      .toContact(contact)
+                      .subject(subject)
+                      .bodyText(body)
+                      .company(company)
+                      .sender(user)
+                      .build();
+
+              var result = emailService.sendEmail(request);
+
+              if (result.success()) {
+                successCount++;
+              } else {
+                failCount++;
+                errors.append(contact.getName()).append(": ").append(result.message()).append("\n");
+              }
+            } catch (Exception ex) {
+              failCount++;
+              errors.append(contact.getName()).append(": ").append(ex.getMessage()).append("\n");
+            }
+          }
+
+          // Show results
+          resultsArea.removeAll();
+          resultsArea.setVisible(true);
+
+          if (successCount > 0) {
+            Span successSpan =
+                new Span(
+                    String.format(
+                        "Successfully sent %d email%s",
+                        successCount, successCount != 1 ? "s" : ""));
+            successSpan.getStyle().set("color", "var(--lumo-success-text-color)");
+            resultsArea.add(successSpan);
+          }
+
+          if (failCount > 0) {
+            Span failSpan =
+                new Span(
+                    String.format(
+                        "Failed to send %d email%s", failCount, failCount != 1 ? "s" : ""));
+            failSpan.getStyle().set("color", "var(--lumo-error-text-color)");
+            resultsArea.add(failSpan);
+
+            if (!errors.isEmpty()) {
+              TextArea errorDetails = new TextArea("Error Details");
+              errorDetails.setValue(errors.toString());
+              errorDetails.setReadOnly(true);
+              errorDetails.setWidthFull();
+              errorDetails.setHeight("80px");
+              resultsArea.add(errorDetails);
+            }
+          }
+
+          // Re-enable send button and update text
+          sendButton.setEnabled(true);
+          sendButton.setText("Send Emails");
+
+          // Show summary notification
+          if (failCount == 0) {
+            Notification.show(
+                    String.format("Bulk email complete: %d sent successfully", successCount),
+                    3000,
+                    Notification.Position.BOTTOM_START)
+                .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+          } else if (successCount == 0) {
+            Notification.show(
+                    "Bulk email failed: No emails were sent",
+                    3000,
+                    Notification.Position.BOTTOM_START)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+          } else {
+            Notification.show(
+                    String.format(
+                        "Bulk email complete: %d sent, %d failed", successCount, failCount),
+                    3000,
+                    Notification.Position.BOTTOM_START)
+                .addThemeVariants(NotificationVariant.LUMO_WARNING);
+          }
+        });
+
+    Button cancelButton = new Button("Cancel", e -> dialog.close());
+
+    dialog.add(layout);
+    dialog.getFooter().add(cancelButton, sendButton);
     dialog.open();
   }
 }
