@@ -23,6 +23,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.example.application.domain.Company;
+import com.example.application.domain.TaxReturn;
+import com.example.application.domain.TaxReturnLine;
 import com.example.application.service.ReportingService.*;
 import com.lowagie.text.Chunk;
 import com.lowagie.text.Document;
@@ -2842,5 +2844,315 @@ public class ReportExportService {
     cell.setHorizontalAlignment(Element.ALIGN_CENTER);
     cell.setBorderColor(Color.LIGHT_GRAY);
     table.addCell(cell);
+  }
+
+  // ==================== GST/TAX RETURN EXPORTS ====================
+
+  /**
+   * Exports GST/Tax Return to PDF format. Shows the return summary with box codes, descriptions,
+   * and amounts.
+   */
+  public byte[] exportTaxReturnToPdf(TaxReturn taxReturn, Company company) {
+    try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+      Document document = new Document(PageSize.A4);
+      PdfWriter.getInstance(document, baos);
+      document.open();
+
+      // Title
+      addReportTitle(document, company, "GST Return");
+      addReportSubtitle(
+          document,
+          "Period: "
+              + taxReturn.getStartDate().format(dateFormatter)
+              + " to "
+              + taxReturn.getEndDate().format(dateFormatter));
+
+      // Return info section
+      Paragraph infoSection = new Paragraph();
+      infoSection.add(new Chunk("Basis: ", TABLE_CELL_BOLD));
+      infoSection.add(new Chunk(taxReturn.getBasis().name(), TABLE_CELL_FONT));
+      infoSection.add(new Chunk("    Status: ", TABLE_CELL_BOLD));
+      infoSection.add(new Chunk(taxReturn.getStatus().name(), TABLE_CELL_FONT));
+      infoSection.setAlignment(Element.ALIGN_CENTER);
+      infoSection.setSpacingAfter(15);
+      document.add(infoSection);
+
+      // Return lines table
+      addSectionHeader(document, "Return Details");
+
+      PdfPTable table = new PdfPTable(3);
+      table.setWidthPercentage(100);
+      table.setWidths(new float[] {1.5f, 5f, 2.5f});
+
+      addTableHeader(table, "Box");
+      addTableHeader(table, "Description");
+      addTableHeader(table, "Amount");
+
+      boolean alternate = false;
+      for (TaxReturnLine line : taxReturn.getLines()) {
+        Color bg = alternate ? ALT_ROW_BG : Color.WHITE;
+        addTableCell(table, line.getBoxCode(), bg, Element.ALIGN_CENTER);
+        addTableCell(table, line.getBoxDescription(), bg, Element.ALIGN_LEFT);
+        addTableCell(table, formatCurrency(line.getAmount()), bg, Element.ALIGN_RIGHT);
+        alternate = !alternate;
+      }
+
+      document.add(table);
+
+      // Summary section
+      document.add(Chunk.NEWLINE);
+      addSectionHeader(document, "Summary");
+
+      PdfPTable summaryTable = new PdfPTable(2);
+      summaryTable.setWidthPercentage(60);
+      summaryTable.setHorizontalAlignment(Element.ALIGN_CENTER);
+      summaryTable.setWidths(new float[] {3f, 2f});
+
+      addSummaryRow(summaryTable, "Total Sales", formatCurrency(taxReturn.getTotalSales()));
+      addSummaryRow(summaryTable, "Total Purchases", formatCurrency(taxReturn.getTotalPurchases()));
+      addSummaryRow(
+          summaryTable, "Output Tax (GST Collected)", formatCurrency(taxReturn.getOutputTax()));
+      addSummaryRow(summaryTable, "Input Tax (GST Paid)", formatCurrency(taxReturn.getInputTax()));
+
+      // Tax payable/refund with color coding
+      BigDecimal taxPayable = taxReturn.getTaxPayable();
+      String payableLabel =
+          taxPayable.compareTo(java.math.BigDecimal.ZERO) >= 0 ? "Tax Payable" : "Tax Refund";
+      Color payableColor =
+          taxPayable.compareTo(java.math.BigDecimal.ZERO) >= 0 ? LOSS_COLOR : PROFIT_COLOR;
+
+      PdfPCell labelCell = new PdfPCell(new Phrase(payableLabel, TABLE_CELL_BOLD));
+      labelCell.setPadding(8);
+      labelCell.setBackgroundColor(TOTAL_BG);
+      labelCell.setBorder(Rectangle.TOP);
+      labelCell.setBorderWidth(2);
+      summaryTable.addCell(labelCell);
+
+      PdfPCell valueCell =
+          new PdfPCell(
+              new Phrase(
+                  formatCurrency(taxPayable.abs()),
+                  new Font(Font.HELVETICA, 10, Font.BOLD, payableColor)));
+      valueCell.setPadding(8);
+      valueCell.setBackgroundColor(TOTAL_BG);
+      valueCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+      valueCell.setBorder(Rectangle.TOP);
+      valueCell.setBorderWidth(2);
+      summaryTable.addCell(valueCell);
+
+      document.add(summaryTable);
+
+      // Notes if present
+      if (taxReturn.getNotes() != null && !taxReturn.getNotes().isEmpty()) {
+        document.add(Chunk.NEWLINE);
+        addSectionHeader(document, "Notes");
+        Paragraph notes = new Paragraph(taxReturn.getNotes(), TABLE_CELL_FONT);
+        document.add(notes);
+      }
+
+      addReportFooter(document);
+      document.close();
+
+      log.info("Generated GST Return PDF ({} bytes)", baos.size());
+      return baos.toByteArray();
+
+    } catch (Exception e) {
+      log.error("Failed to generate GST Return PDF", e);
+      throw new RuntimeException("Failed to generate GST Return PDF: " + e.getMessage(), e);
+    }
+  }
+
+  /** Exports GST/Tax Return to Excel format. */
+  public byte[] exportTaxReturnToExcel(TaxReturn taxReturn, Company company) {
+    try (XSSFWorkbook workbook = new XSSFWorkbook();
+        ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+
+      Sheet sheet = workbook.createSheet("GST Return");
+      int rowNum = 0;
+
+      // Styles
+      CellStyle headerStyle = createHeaderStyle(workbook);
+      CellStyle currencyStyle = createCurrencyStyle(workbook);
+      CellStyle titleStyle = createTitleStyle(workbook);
+      CellStyle totalStyle = createTotalStyle(workbook);
+      CellStyle sectionStyle = createSectionStyle(workbook);
+
+      // Title
+      org.apache.poi.ss.usermodel.Row titleRow = sheet.createRow(rowNum++);
+      org.apache.poi.ss.usermodel.Cell titleCell = titleRow.createCell(0);
+      titleCell.setCellValue(company.getName() + " - GST Return");
+      titleCell.setCellStyle(titleStyle);
+      sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 2));
+
+      // Date range
+      org.apache.poi.ss.usermodel.Row dateRow = sheet.createRow(rowNum++);
+      dateRow
+          .createCell(0)
+          .setCellValue(
+              "Period: "
+                  + taxReturn.getStartDate().format(dateFormatter)
+                  + " to "
+                  + taxReturn.getEndDate().format(dateFormatter));
+      sheet.addMergedRegion(new CellRangeAddress(1, 1, 0, 2));
+
+      // Basis and status
+      org.apache.poi.ss.usermodel.Row infoRow = sheet.createRow(rowNum++);
+      infoRow
+          .createCell(0)
+          .setCellValue(
+              "Basis: "
+                  + taxReturn.getBasis().name()
+                  + "  |  Status: "
+                  + taxReturn.getStatus().name());
+      sheet.addMergedRegion(new CellRangeAddress(2, 2, 0, 2));
+
+      rowNum++; // Empty row
+
+      // Return details section header
+      org.apache.poi.ss.usermodel.Row sectionRow = sheet.createRow(rowNum++);
+      org.apache.poi.ss.usermodel.Cell sectionCell = sectionRow.createCell(0);
+      sectionCell.setCellValue("Return Details");
+      sectionCell.setCellStyle(sectionStyle);
+
+      // Header row
+      org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(rowNum++);
+      String[] headers = {"Box", "Description", "Amount"};
+      for (int i = 0; i < headers.length; i++) {
+        org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
+        cell.setCellValue(headers[i]);
+        cell.setCellStyle(headerStyle);
+      }
+
+      // Data rows
+      for (TaxReturnLine line : taxReturn.getLines()) {
+        org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowNum++);
+        row.createCell(0).setCellValue(line.getBoxCode());
+        row.createCell(1).setCellValue(line.getBoxDescription());
+
+        org.apache.poi.ss.usermodel.Cell amountCell = row.createCell(2);
+        amountCell.setCellValue(line.getAmount().doubleValue());
+        amountCell.setCellStyle(currencyStyle);
+      }
+
+      rowNum++; // Empty row
+
+      // Summary section
+      org.apache.poi.ss.usermodel.Row summaryHeaderRow = sheet.createRow(rowNum++);
+      org.apache.poi.ss.usermodel.Cell summaryHeaderCell = summaryHeaderRow.createCell(0);
+      summaryHeaderCell.setCellValue("Summary");
+      summaryHeaderCell.setCellStyle(sectionStyle);
+
+      // Summary rows
+      addExcelTaxReturnSummaryRow(
+          sheet, rowNum++, "Total Sales", taxReturn.getTotalSales(), currencyStyle);
+      addExcelTaxReturnSummaryRow(
+          sheet, rowNum++, "Total Purchases", taxReturn.getTotalPurchases(), currencyStyle);
+      addExcelTaxReturnSummaryRow(
+          sheet, rowNum++, "Output Tax (GST Collected)", taxReturn.getOutputTax(), currencyStyle);
+      addExcelTaxReturnSummaryRow(
+          sheet, rowNum++, "Input Tax (GST Paid)", taxReturn.getInputTax(), currencyStyle);
+
+      // Tax payable/refund
+      org.apache.poi.ss.usermodel.Row payableRow = sheet.createRow(rowNum++);
+      BigDecimal taxPayable = taxReturn.getTaxPayable();
+      String payableLabel =
+          taxPayable.compareTo(java.math.BigDecimal.ZERO) >= 0 ? "Tax Payable" : "Tax Refund";
+      org.apache.poi.ss.usermodel.Cell payableLabelCell = payableRow.createCell(1);
+      payableLabelCell.setCellValue(payableLabel);
+      payableLabelCell.setCellStyle(totalStyle);
+
+      org.apache.poi.ss.usermodel.Cell payableValueCell = payableRow.createCell(2);
+      payableValueCell.setCellValue(taxPayable.abs().doubleValue());
+      payableValueCell.setCellStyle(totalStyle);
+
+      // Auto-size columns
+      sheet.setColumnWidth(0, 15 * 256);
+      sheet.setColumnWidth(1, 35 * 256);
+      sheet.setColumnWidth(2, 18 * 256);
+
+      workbook.write(baos);
+      log.info("Generated GST Return Excel ({} bytes)", baos.size());
+      return baos.toByteArray();
+
+    } catch (IOException e) {
+      log.error("Failed to generate GST Return Excel", e);
+      throw new RuntimeException("Failed to generate GST Return Excel: " + e.getMessage(), e);
+    }
+  }
+
+  /** Exports GST/Tax Return to CSV format. */
+  public byte[] exportTaxReturnToCsv(TaxReturn taxReturn, Company company) {
+    StringBuilder csv = new StringBuilder();
+
+    // Add UTF-8 BOM for Excel compatibility
+    csv.append('\uFEFF');
+
+    // Title rows
+    csv.append(escapeCsvField(company.getName())).append(" - GST Return\n");
+    csv.append("Period: ")
+        .append(taxReturn.getStartDate().format(dateFormatter))
+        .append(" to ")
+        .append(taxReturn.getEndDate().format(dateFormatter))
+        .append("\n");
+    csv.append("Basis: ")
+        .append(taxReturn.getBasis().name())
+        .append("  |  Status: ")
+        .append(taxReturn.getStatus().name())
+        .append("\n\n");
+
+    // Return Details section
+    csv.append("Return Details\n");
+    csv.append("Box,Description,Amount\n");
+
+    for (TaxReturnLine line : taxReturn.getLines()) {
+      csv.append(escapeCsvField(line.getBoxCode())).append(",");
+      csv.append(escapeCsvField(line.getBoxDescription())).append(",");
+      csv.append(line.getAmount().toPlainString()).append("\n");
+    }
+
+    csv.append("\n");
+
+    // Summary section
+    csv.append("Summary\n");
+    csv.append("Total Sales,").append(taxReturn.getTotalSales().toPlainString()).append("\n");
+    csv.append("Total Purchases,")
+        .append(taxReturn.getTotalPurchases().toPlainString())
+        .append("\n");
+    csv.append("Output Tax (GST Collected),")
+        .append(taxReturn.getOutputTax().toPlainString())
+        .append("\n");
+    csv.append("Input Tax (GST Paid),")
+        .append(taxReturn.getInputTax().toPlainString())
+        .append("\n");
+
+    BigDecimal taxPayable = taxReturn.getTaxPayable();
+    String payableLabel =
+        taxPayable.compareTo(java.math.BigDecimal.ZERO) >= 0 ? "Tax Payable" : "Tax Refund";
+    csv.append(payableLabel).append(",").append(taxPayable.abs().toPlainString()).append("\n");
+
+    log.info("Generated GST Return CSV ({} bytes)", csv.length());
+    return csv.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+  }
+
+  private void addSummaryRow(PdfPTable table, String label, String value) {
+    PdfPCell labelCell = new PdfPCell(new Phrase(label, TABLE_CELL_FONT));
+    labelCell.setPadding(6);
+    labelCell.setBorderColor(Color.LIGHT_GRAY);
+    table.addCell(labelCell);
+
+    PdfPCell valueCell = new PdfPCell(new Phrase(value, TABLE_CELL_FONT));
+    valueCell.setPadding(6);
+    valueCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+    valueCell.setBorderColor(Color.LIGHT_GRAY);
+    table.addCell(valueCell);
+  }
+
+  private void addExcelTaxReturnSummaryRow(
+      Sheet sheet, int rowNum, String label, java.math.BigDecimal value, CellStyle currencyStyle) {
+    org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowNum);
+    row.createCell(1).setCellValue(label);
+    org.apache.poi.ss.usermodel.Cell valueCell = row.createCell(2);
+    valueCell.setCellValue(value.doubleValue());
+    valueCell.setCellStyle(currencyStyle);
   }
 }

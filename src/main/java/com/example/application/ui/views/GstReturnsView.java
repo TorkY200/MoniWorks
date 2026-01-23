@@ -1,5 +1,6 @@
 package com.example.application.ui.views;
 
+import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -28,6 +29,7 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.StreamResource;
 
 import jakarta.annotation.security.PermitAll;
 
@@ -46,6 +48,7 @@ public class GstReturnsView extends VerticalLayout {
   private final CompanyContextService companyContextService;
   private final CompanyService companyService;
   private final TaxLineRepository taxLineRepository;
+  private final ReportExportService reportExportService;
 
   private final Grid<TaxReturn> returnsGrid = new Grid<>();
 
@@ -55,11 +58,13 @@ public class GstReturnsView extends VerticalLayout {
       TaxReturnService taxReturnService,
       CompanyContextService companyContextService,
       CompanyService companyService,
-      TaxLineRepository taxLineRepository) {
+      TaxLineRepository taxLineRepository,
+      ReportExportService reportExportService) {
     this.taxReturnService = taxReturnService;
     this.companyContextService = companyContextService;
     this.companyService = companyService;
     this.taxLineRepository = taxLineRepository;
+    this.reportExportService = reportExportService;
 
     addClassName("gst-returns-view");
     setSizeFull();
@@ -380,11 +385,92 @@ public class GstReturnsView extends VerticalLayout {
 
     content.add(summaryTitle, summaryHint, summaryGrid, statusInfo, totalsLayout);
 
+    // Export buttons
+    HorizontalLayout exportButtons = new HorizontalLayout();
+    exportButtons.setSpacing(true);
+
+    Company company = companyContextService.getCurrentCompany();
+    String fileBaseName =
+        "GST_Return_"
+            + taxReturn.getStartDate().toString()
+            + "_to_"
+            + taxReturn.getEndDate().toString();
+
+    // PDF export
+    Anchor pdfLink = createExportLink(taxReturn, company, fileBaseName, "pdf");
+    Button pdfBtn = new Button("Export PDF", VaadinIcon.FILE_TEXT.create());
+    pdfBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+    pdfLink.add(pdfBtn);
+
+    // Excel export
+    Anchor excelLink = createExportLink(taxReturn, company, fileBaseName, "xlsx");
+    Button excelBtn = new Button("Export Excel", VaadinIcon.FILE_TABLE.create());
+    excelBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+    excelLink.add(excelBtn);
+
+    // CSV export
+    Anchor csvLink = createExportLink(taxReturn, company, fileBaseName, "csv");
+    Button csvBtn = new Button("Export CSV", VaadinIcon.FILE.create());
+    csvBtn.addThemeVariants(ButtonVariant.LUMO_SMALL);
+    csvLink.add(csvBtn);
+
+    exportButtons.add(pdfLink, excelLink, csvLink);
+
+    content.add(exportButtons);
+
     Button closeBtn = new Button("Close", e -> dialog.close());
 
     dialog.add(content);
     dialog.getFooter().add(closeBtn);
     dialog.open();
+  }
+
+  private Anchor createExportLink(
+      TaxReturn taxReturn, Company company, String fileBaseName, String format) {
+    StreamResource resource;
+    String filename;
+
+    switch (format) {
+      case "pdf":
+        filename = fileBaseName + ".pdf";
+        resource =
+            new StreamResource(
+                filename,
+                () -> {
+                  byte[] data = reportExportService.exportTaxReturnToPdf(taxReturn, company);
+                  return new ByteArrayInputStream(data);
+                });
+        resource.setContentType("application/pdf");
+        break;
+      case "xlsx":
+        filename = fileBaseName + ".xlsx";
+        resource =
+            new StreamResource(
+                filename,
+                () -> {
+                  byte[] data = reportExportService.exportTaxReturnToExcel(taxReturn, company);
+                  return new ByteArrayInputStream(data);
+                });
+        resource.setContentType(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        break;
+      case "csv":
+      default:
+        filename = fileBaseName + ".csv";
+        resource =
+            new StreamResource(
+                filename,
+                () -> {
+                  byte[] data = reportExportService.exportTaxReturnToCsv(taxReturn, company);
+                  return new ByteArrayInputStream(data);
+                });
+        resource.setContentType("text/csv");
+        break;
+    }
+
+    Anchor anchor = new Anchor(resource, "");
+    anchor.getElement().setAttribute("download", true);
+    return anchor;
   }
 
   private void finalizeReturn(TaxReturn taxReturn) {
