@@ -1,9 +1,11 @@
 package com.example.application.ui.views;
 
+import java.io.ByteArrayInputStream;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.example.application.domain.AuditEvent;
@@ -17,17 +19,20 @@ import com.vaadin.flow.component.datetimepicker.DateTimePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
+import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Pre;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.VaadinIcon;
+import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.StreamResource;
 
 import jakarta.annotation.security.PermitAll;
 
@@ -48,6 +53,9 @@ public class AuditEventsView extends VerticalLayout {
   private final TextField entityTypeFilter = new TextField();
   private final DateTimePicker fromDateFilter = new DateTimePicker();
   private final DateTimePicker toDateFilter = new DateTimePicker();
+
+  // Holds current filtered events for export
+  private List<AuditEvent> currentEvents = new ArrayList<>();
 
   private static final DateTimeFormatter DATETIME_FORMAT =
       DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm:ss");
@@ -123,10 +131,16 @@ public class AuditEventsView extends VerticalLayout {
     refreshBtn.addClickListener(e -> loadAuditEvents());
     refreshBtn.getElement().setAttribute("title", "Refresh");
 
+    // Export CSV button with download anchor
+    Button exportCsvBtn = new Button("Export CSV", VaadinIcon.DOWNLOAD.create());
+    exportCsvBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+    exportCsvBtn.addClickListener(e -> exportToCsv());
+    exportCsvBtn.getElement().setAttribute("title", "Export current view to CSV");
+
     HorizontalLayout left = new HorizontalLayout(title);
     left.setAlignItems(FlexComponent.Alignment.CENTER);
 
-    HorizontalLayout right = new HorizontalLayout(refreshBtn);
+    HorizontalLayout right = new HorizontalLayout(exportCsvBtn, refreshBtn);
     right.setAlignItems(FlexComponent.Alignment.CENTER);
 
     HorizontalLayout toolbar = new HorizontalLayout(left, right);
@@ -135,6 +149,43 @@ public class AuditEventsView extends VerticalLayout {
     toolbar.setAlignItems(FlexComponent.Alignment.CENTER);
 
     return toolbar;
+  }
+
+  /** Exports the currently filtered audit events to CSV. */
+  private void exportToCsv() {
+    if (currentEvents.isEmpty()) {
+      Notification.show("No audit events to export", 3000, Notification.Position.BOTTOM_START);
+      return;
+    }
+
+    Company company = companyContextService.getCurrentCompany();
+    byte[] csvData = auditService.exportToCsv(currentEvents, company);
+
+    String filename =
+        "audit-trail-"
+            + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss"))
+            + ".csv";
+
+    StreamResource resource = new StreamResource(filename, () -> new ByteArrayInputStream(csvData));
+    resource.setContentType("text/csv");
+    resource.setCacheTime(0);
+
+    // Create a temporary anchor for download
+    Anchor downloadLink = new Anchor(resource, "");
+    downloadLink.getElement().setAttribute("download", true);
+    downloadLink.getStyle().set("display", "none");
+    add(downloadLink);
+
+    // Trigger download via JavaScript
+    downloadLink.getElement().executeJs("this.click()");
+
+    // Remove the anchor after a short delay
+    downloadLink.getElement().executeJs("setTimeout(() => this.remove(), 1000)");
+
+    Notification.show(
+        "Exporting " + currentEvents.size() + " audit events to CSV",
+        3000,
+        Notification.Position.BOTTOM_START);
   }
 
   private HorizontalLayout createFilters() {
@@ -217,6 +268,8 @@ public class AuditEventsView extends VerticalLayout {
               .toList();
     }
 
+    // Store for export
+    currentEvents = new ArrayList<>(events);
     grid.setItems(events);
   }
 

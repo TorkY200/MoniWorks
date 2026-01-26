@@ -73,6 +73,7 @@
 - **Phase 66 GST Return Export (PDF/Excel/CSV) COMPLETE** - Tag: 0.7.8
 - **Phase 67 Attachment Company Ownership Verification COMPLETE** - Tag: 0.7.9
 - **Phase 68 Attachment UI for Invoices/Bills/Products/Contacts COMPLETE** - Tag: 0.8.0
+- **Phase 69 Audit Trail CSV Export COMPLETE** - Tag: 0.8.2
 - All 290 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 13, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 32, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21, KPIImportServiceTest: 16, RecurringTemplateServiceTest: 8)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
@@ -1795,6 +1796,18 @@ Per specs, Release 1 must deliver:
   - Attachment section added as new "Attachments" tab in tabbed detail view
   - Uses EntityType.CONTACT for linking
 - [x] Spec 14 compliance: Attachment UI now available on invoices, bills, products, and contacts
+- [x] All 290 tests passing
+- [x] No forbidden markers
+
+### Phase 69: Audit Trail CSV Export (COMPLETE) - Tag: 0.8.2
+- [x] Added CSV export capability to AuditEventsView for compliance (spec 14)
+  - Created AuditService.exportToCsv() method that generates CSV with UTF-8 BOM for Excel compatibility
+  - Export includes: Timestamp, Event Type, Actor, Entity Type, Entity ID, Summary, Details columns
+  - Added "Export CSV" button to AuditEventsView toolbar
+  - Exports currently filtered events (respects all active filters)
+  - Uses StreamResource and Anchor for browser download
+  - Filename includes timestamp for uniqueness (audit-trail-YYYY-MM-DD-HHmmss.csv)
+  - Proper CSV field escaping for fields containing commas, quotes, or newlines
 - [x] All 290 tests passing
 - [x] No forbidden markers
 

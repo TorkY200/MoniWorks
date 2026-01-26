@@ -245,4 +245,80 @@ public class AuditService {
             company, org.springframework.data.domain.Pageable.unpaged())
         .getTotalElements();
   }
+
+  // ============================================================
+  // CSV Export Methods
+  // ============================================================
+
+  /**
+   * Exports audit events to CSV format for compliance and reporting.
+   *
+   * @param events the list of audit events to export
+   * @param company the company (for header information)
+   * @return CSV content as byte array with UTF-8 BOM for Excel compatibility
+   */
+  public byte[] exportToCsv(List<AuditEvent> events, Company company) {
+    StringBuilder csv = new StringBuilder();
+
+    // UTF-8 BOM for Excel compatibility
+    csv.append("\uFEFF");
+
+    // Header
+    csv.append(escapeCsvField(company != null ? company.getName() : "All Companies"))
+        .append(" - Audit Trail Export\n");
+    csv.append("Generated: ")
+        .append(
+            java.time.LocalDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+        .append("\n");
+    csv.append("Total Events: ").append(events.size()).append("\n\n");
+
+    // Column headers
+    csv.append("Timestamp,Event Type,Actor,Entity Type,Entity ID,Summary,Details\n");
+
+    // Data rows
+    java.time.format.DateTimeFormatter formatter =
+        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+            .withZone(java.time.ZoneId.systemDefault());
+
+    for (AuditEvent event : events) {
+      // Timestamp
+      csv.append(event.getCreatedAt() != null ? formatter.format(event.getCreatedAt()) : "")
+          .append(",");
+
+      // Event Type
+      csv.append(escapeCsvField(event.getEventType())).append(",");
+
+      // Actor
+      String actor = event.getActor() != null ? event.getActor().getDisplayName() : "System";
+      csv.append(escapeCsvField(actor)).append(",");
+
+      // Entity Type
+      csv.append(escapeCsvField(event.getEntityType())).append(",");
+
+      // Entity ID
+      csv.append(event.getEntityId() != null ? event.getEntityId().toString() : "").append(",");
+
+      // Summary
+      csv.append(escapeCsvField(event.getSummary())).append(",");
+
+      // Details JSON
+      csv.append(escapeCsvField(event.getDetailsJson())).append("\n");
+    }
+
+    return csv.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+  }
+
+  /**
+   * Escapes a field value for CSV format. If the field contains comma, quote, or newline, it is
+   * wrapped in quotes and internal quotes are doubled.
+   */
+  private String escapeCsvField(String value) {
+    if (value == null) return "";
+    // If field contains comma, quote, or newline, wrap in quotes and escape quotes
+    if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
+      return "\"" + value.replace("\"", "\"\"") + "\"";
+    }
+    return value;
+  }
 }
