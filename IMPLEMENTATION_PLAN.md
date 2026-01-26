@@ -75,6 +75,7 @@
 - **Phase 68 Attachment UI for Invoices/Bills/Products/Contacts COMPLETE** - Tag: 0.8.0
 - **Phase 69 Audit Trail CSV Export COMPLETE** - Tag: 0.8.2
 - **Phase 70 Bank Reconciliation Matching Enhancement COMPLETE** - Tag: 0.8.3
+- **Phase 71 Contact Color Tag UI COMPLETE** - Tag: 0.8.4
 - All 290 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 13, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 32, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21, KPIImportServiceTest: 16, RecurringTemplateServiceTest: 8)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
@@ -1818,6 +1819,22 @@ Per specs, Release 1 must deliver:
 - [x] Description similarity matching: if no exact amount+date matches found, searches for transactions with similar descriptions (shared significant words of 3+ characters)
 - [x] Match Score column in candidate grid showing why each transaction was suggested (Amount, Date, Desc indicators)
 - [x] User help text explaining matching criteria
+- [x] All 290 tests passing
+- [x] No forbidden markers
+
+### Phase 71: Contact Color Tag UI (COMPLETE) - Tag: 0.8.4
+- [x] Added colorTag display column to ContactsView grid (spec 07)
+  - New grid column shows colorTag as a styled badge with appropriate colors
+  - Colors supported: Red, Orange, Yellow, Green, Blue, Purple, Pink, Gray
+  - Badge styling with background color and contrasting text
+- [x] Added colorTag editing in contact create/edit dialog (spec 07)
+  - ComboBox with predefined color options
+  - Clear button to remove color tag
+  - Saves colorTag to Contact entity
+- [x] Added colorTag visual display in contact detail view (spec 07)
+  - Shows color badge in read-only detail view
+  - Consistent styling with grid column display
+- [x] Fixes spec 07 "categories + color tags" requirement
 - [x] All 290 tests passing
 - [x] No forbidden markers
 

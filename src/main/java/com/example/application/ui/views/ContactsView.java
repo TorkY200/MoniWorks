@@ -176,6 +176,12 @@ public class ContactsView extends VerticalLayout {
         .setResizable(true)
         .setAutoWidth(true);
 
+    grid.addComponentColumn(this::createColorTagBadge)
+        .setHeader("Tag")
+        .setKey("colorTag")
+        .setResizable(true)
+        .setAutoWidth(true);
+
     grid.addColumn(c -> c.isActive() ? "Active" : "Inactive")
         .setHeader("Status")
         .setKey("status")
@@ -363,6 +369,17 @@ public class ContactsView extends VerticalLayout {
     addReadOnlyField(form, "Name", contact.getName());
     addReadOnlyField(form, "Type", contact.getType().name());
     addReadOnlyField(form, "Category", contact.getCategory());
+
+    // Add color tag with visual badge
+    if (contact.getColorTag() != null && !contact.getColorTag().isBlank()) {
+      Span colorTagBadge = createColorTagBadge(contact);
+      TextField colorTagField = new TextField("Color Tag");
+      colorTagField.setReadOnly(true);
+      HorizontalLayout colorTagLayout = new HorizontalLayout(colorTagField, colorTagBadge);
+      colorTagLayout.setDefaultVerticalComponentAlignment(FlexComponent.Alignment.END);
+      colorTagLayout.setSpacing(true);
+      form.add(colorTagLayout);
+    }
 
     layout.add(new H3("Contact Information"), form);
 
@@ -574,6 +591,12 @@ public class ContactsView extends VerticalLayout {
     categoryField.setMaxLength(50);
     if (!isNew && contact.getCategory() != null) categoryField.setValue(contact.getCategory());
 
+    ComboBox<String> colorTagCombo = new ComboBox<>("Color Tag");
+    colorTagCombo.setItems(COLOR_TAG_OPTIONS);
+    colorTagCombo.setClearButtonVisible(true);
+    colorTagCombo.setPlaceholder("Select a color");
+    if (!isNew && contact.getColorTag() != null) colorTagCombo.setValue(contact.getColorTag());
+
     // Address fields
     TextField addressLine1Field = new TextField("Address Line 1");
     addressLine1Field.setMaxLength(255);
@@ -664,7 +687,7 @@ public class ContactsView extends VerticalLayout {
     Checkbox activeCheckbox = new Checkbox("Active");
     activeCheckbox.setValue(isNew || contact.isActive());
 
-    form.add(codeField, nameField, typeCombo, categoryField);
+    form.add(codeField, nameField, typeCombo, categoryField, colorTagCombo);
     form.add(new H3("Address"));
     form.add(
         addressLine1Field,
@@ -708,6 +731,7 @@ public class ContactsView extends VerticalLayout {
             }
 
             c.setCategory(emptyToNull(categoryField.getValue()));
+            c.setColorTag(colorTagCombo.getValue());
             c.setAddressLine1(emptyToNull(addressLine1Field.getValue()));
             c.setAddressLine2(emptyToNull(addressLine2Field.getValue()));
             c.setCity(emptyToNull(cityField.getValue()));
@@ -1357,5 +1381,56 @@ public class ContactsView extends VerticalLayout {
     dialog.add(layout);
     dialog.getFooter().add(cancelButton, sendButton);
     dialog.open();
+  }
+
+  /** Available color tags for contacts with their display colors. */
+  private static final String[] COLOR_TAG_OPTIONS = {
+    "Red", "Orange", "Yellow", "Green", "Blue", "Purple", "Pink", "Gray"
+  };
+
+  /** Returns the CSS color value for a given color tag name. */
+  private String getColorTagCssColor(String colorTag) {
+    if (colorTag == null || colorTag.isBlank()) {
+      return null;
+    }
+    return switch (colorTag.toLowerCase()) {
+      case "red" -> "#e74c3c";
+      case "orange" -> "#e67e22";
+      case "yellow" -> "#f1c40f";
+      case "green" -> "#27ae60";
+      case "blue" -> "#3498db";
+      case "purple" -> "#9b59b6";
+      case "pink" -> "#e91e63";
+      case "gray", "grey" -> "#95a5a6";
+      default -> "#7f8c8d"; // Default gray for unknown colors
+    };
+  }
+
+  /** Creates a visual badge component for a contact's color tag. */
+  private Span createColorTagBadge(Contact contact) {
+    String colorTag = contact.getColorTag();
+    if (colorTag == null || colorTag.isBlank()) {
+      return new Span();
+    }
+
+    Span badge = new Span(colorTag);
+    badge.getStyle().set("display", "inline-block");
+    badge.getStyle().set("padding", "2px 8px");
+    badge.getStyle().set("border-radius", "12px");
+    badge.getStyle().set("font-size", "0.8em");
+    badge.getStyle().set("font-weight", "500");
+
+    String bgColor = getColorTagCssColor(colorTag);
+    if (bgColor != null) {
+      badge.getStyle().set("background-color", bgColor);
+      // Use white text for darker colors, black for lighter
+      String textColor =
+          colorTag.equalsIgnoreCase("yellow") || colorTag.equalsIgnoreCase("gray")
+              ? "#333"
+              : "#fff";
+      badge.getStyle().set("color", textColor);
+    }
+
+    return badge;
   }
 }
