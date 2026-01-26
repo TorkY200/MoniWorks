@@ -54,4 +54,19 @@ public interface ReceivableAllocationRepository extends JpaRepository<Receivable
       @Param("contact") Contact contact,
       @Param("startDate") java.time.Instant startDate,
       @Param("endDate") java.time.Instant endDate);
+
+  /**
+   * Find all allocations for a company within a date range (for cash basis GST returns). Uses
+   * allocatedAt timestamp to determine when payment was received.
+   */
+  @Query(
+      "SELECT a FROM ReceivableAllocation a "
+          + "JOIN FETCH a.salesInvoice si "
+          + "WHERE a.company = :company "
+          + "AND a.allocatedAt >= :startDate AND a.allocatedAt < :endDate "
+          + "ORDER BY a.allocatedAt ASC")
+  List<ReceivableAllocation> findByCompanyAndAllocatedAtRange(
+      @Param("company") Company company,
+      @Param("startDate") java.time.Instant startDate,
+      @Param("endDate") java.time.Instant endDate);
 }

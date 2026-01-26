@@ -40,4 +40,19 @@ public interface PayableAllocationRepository extends JpaRepository<PayableAlloca
   // Check if allocation exists
   boolean existsByPaymentTransactionAndSupplierBill(
       Transaction paymentTransaction, SupplierBill supplierBill);
+
+  /**
+   * Find all allocations for a company within a date range (for cash basis GST returns). Uses
+   * allocatedAt timestamp to determine when payment was made.
+   */
+  @Query(
+      "SELECT a FROM PayableAllocation a "
+          + "JOIN FETCH a.supplierBill sb "
+          + "WHERE a.company = :company "
+          + "AND a.allocatedAt >= :startDate AND a.allocatedAt < :endDate "
+          + "ORDER BY a.allocatedAt ASC")
+  List<PayableAllocation> findByCompanyAndAllocatedAtRange(
+      @Param("company") Company company,
+      @Param("startDate") java.time.Instant startDate,
+      @Param("endDate") java.time.Instant endDate);
 }

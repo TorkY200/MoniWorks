@@ -78,7 +78,8 @@
 - **Phase 71 Contact Color Tag UI COMPLETE** - Tag: 0.8.4
 - **Phase 72 Email Reports from ReportsView COMPLETE** - Tag: 0.8.5
 - **Phase 73 ProductsView Active and Inventoried Filters COMPLETE** - Tag: 0.8.6
-- All 290 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 13, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 32, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21, KPIImportServiceTest: 16, RecurringTemplateServiceTest: 8)
+- **Phase 74 Cash Basis GST Return Support COMPLETE** - Tag: 0.8.7
+- All 298 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 13, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 32, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21, KPIImportServiceTest: 16, RecurringTemplateServiceTest: 8, TaxReturnServiceTest: 8)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
 - Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql, V14__statement_runs.sql, V15__additional_permissions.sql, V16__user_security_level.sql, V17__user_invitations.sql, V18__credit_notes.sql, V19__reconciliation_match.sql, V20__ledger_entry_reconciliation.sql, V21__allocation_rule_amount_range.sql, V22__debit_notes.sql, V23__reversal_link.sql, V24__clerk_roles.sql, V25__allocation_rule_counter_party.sql
@@ -1880,6 +1881,26 @@ Per specs, Release 1 must deliver:
 - [x] All 290 tests passing
 - [x] No forbidden markers
 
+### Phase 74: Cash Basis GST Return Support (COMPLETE) - Tag: 0.8.7
+- [x] Cash basis GST return generation (spec 06)
+  - Added ReceivableAllocationRepository.findByCompanyAndAllocatedAtRange() for receipts in period
+  - Added PayableAllocationRepository.findByCompanyAndAllocatedAtRange() for payments in period
+  - Refactored TaxReturnService to support both Invoice and Cash basis:
+    - Invoice basis: Tax recognized when invoice is issued/bill is posted (based on TaxLine dates)
+    - Cash basis: Tax recognized when payment is received/made (proportional to payment vs invoice total)
+  - Cash basis calculates proportional tax: (payment amount / invoice total) * invoice tax
+  - Handles partial payments correctly with proportional recognition
+  - Supports zero-rated invoices in cash basis
+  - Audit logging includes basis type in event message
+- [x] TaxReturnServiceTest with 8 unit tests covering:
+  - Invoice basis calculation from tax lines
+  - Invoice basis report line generation
+  - Cash basis calculation from allocations
+  - Cash basis partial payment handling
+  - Cash basis zero tax invoice handling
+  - Cash basis empty period (zero totals)
+  - Audit event logging for both bases
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -1989,6 +2010,7 @@ Per specs, Release 1 must deliver:
 - Contact color tag UI (spec 07) - Phase 71
 - Email reports from ReportsView (spec 13) - Phase 72
 - ProductsView active/inventoried filters (spec 08) - Phase 73
+- Cash basis GST return generation (spec 06) - Phase 74
 
 ## Technical Notes
 - Build: `./mvnw compile`
