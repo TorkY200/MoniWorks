@@ -14,10 +14,18 @@ import com.example.application.domain.ContactNote;
 @Repository
 public interface ContactNoteRepository extends JpaRepository<ContactNote, Long> {
 
-  List<ContactNote> findByContactOrderByCreatedAtDesc(Contact contact);
+  @Query(
+      "SELECT n FROM ContactNote n "
+          + "LEFT JOIN FETCH n.createdBy "
+          + "WHERE n.contact = :contact "
+          + "ORDER BY n.createdAt DESC")
+  List<ContactNote> findByContactOrderByCreatedAtDesc(@Param("contact") Contact contact);
 
   @Query(
-      "SELECT n FROM ContactNote n WHERE n.contact.company.id = :companyId "
+      "SELECT n FROM ContactNote n "
+          + "JOIN FETCH n.contact "
+          + "LEFT JOIN FETCH n.createdBy "
+          + "WHERE n.contact.company.id = :companyId "
           + "AND n.followUpDate <= :date ORDER BY n.followUpDate, n.contact.name")
   List<ContactNote> findDueFollowUpsByCompany(
       @Param("companyId") Long companyId, @Param("date") LocalDate date);

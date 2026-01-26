@@ -14,13 +14,28 @@ import com.example.application.domain.Transaction;
 @Repository
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
 
-  List<Transaction> findByCompanyOrderByTransactionDateDesc(Company company);
-
-  List<Transaction> findByCompanyAndStatusOrderByTransactionDateDesc(
-      Company company, Transaction.Status status);
+  @Query(
+      "SELECT DISTINCT t FROM Transaction t "
+          + "LEFT JOIN FETCH t.lines l "
+          + "LEFT JOIN FETCH l.account "
+          + "WHERE t.company = :company "
+          + "ORDER BY t.transactionDate DESC")
+  List<Transaction> findByCompanyOrderByTransactionDateDesc(@Param("company") Company company);
 
   @Query(
-      "SELECT t FROM Transaction t WHERE t.company = :company "
+      "SELECT DISTINCT t FROM Transaction t "
+          + "LEFT JOIN FETCH t.lines l "
+          + "LEFT JOIN FETCH l.account "
+          + "WHERE t.company = :company AND t.status = :status "
+          + "ORDER BY t.transactionDate DESC")
+  List<Transaction> findByCompanyAndStatusOrderByTransactionDateDesc(
+      @Param("company") Company company, @Param("status") Transaction.Status status);
+
+  @Query(
+      "SELECT DISTINCT t FROM Transaction t "
+          + "LEFT JOIN FETCH t.lines l "
+          + "LEFT JOIN FETCH l.account "
+          + "WHERE t.company = :company "
           + "AND t.transactionDate BETWEEN :startDate AND :endDate "
           + "ORDER BY t.transactionDate DESC")
   List<Transaction> findByCompanyAndDateRange(
@@ -29,7 +44,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
       @Param("endDate") LocalDate endDate);
 
   @Query(
-      "SELECT t FROM Transaction t WHERE t.company = :company "
+      "SELECT DISTINCT t FROM Transaction t "
+          + "LEFT JOIN FETCH t.lines l "
+          + "LEFT JOIN FETCH l.account "
+          + "WHERE t.company = :company "
           + "AND t.status = :status "
           + "AND t.transactionDate BETWEEN :startDate AND :endDate "
           + "ORDER BY t.transactionDate DESC")

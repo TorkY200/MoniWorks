@@ -15,7 +15,12 @@ import com.example.application.domain.RecurringTemplate.TemplateType;
 @Repository
 public interface RecurringTemplateRepository extends JpaRepository<RecurringTemplate, Long> {
 
-  List<RecurringTemplate> findByCompanyIdOrderByNameAsc(Long companyId);
+  @Query(
+      "SELECT rt FROM RecurringTemplate rt "
+          + "LEFT JOIN FETCH rt.contact "
+          + "WHERE rt.company.id = :companyId "
+          + "ORDER BY rt.name ASC")
+  List<RecurringTemplate> findByCompanyIdOrderByNameAsc(@Param("companyId") Long companyId);
 
   List<RecurringTemplate> findByCompanyIdAndStatusOrderByNameAsc(Long companyId, Status status);
 
@@ -23,7 +28,9 @@ public interface RecurringTemplateRepository extends JpaRepository<RecurringTemp
       Long companyId, TemplateType templateType);
 
   @Query(
-      "SELECT rt FROM RecurringTemplate rt WHERE rt.company.id = :companyId "
+      "SELECT rt FROM RecurringTemplate rt "
+          + "LEFT JOIN FETCH rt.contact "
+          + "WHERE rt.company.id = :companyId "
           + "AND rt.status = :status AND rt.nextRunDate <= :date ORDER BY rt.nextRunDate")
   List<RecurringTemplate> findDueTemplates(
       @Param("companyId") Long companyId,

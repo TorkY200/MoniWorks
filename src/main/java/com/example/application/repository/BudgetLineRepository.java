@@ -18,7 +18,13 @@ import com.example.application.domain.Period;
 @Repository
 public interface BudgetLineRepository extends JpaRepository<BudgetLine, Long> {
 
-  List<BudgetLine> findByBudget(Budget budget);
+  @Query(
+      "SELECT bl FROM BudgetLine bl "
+          + "JOIN FETCH bl.account "
+          + "LEFT JOIN FETCH bl.period "
+          + "LEFT JOIN FETCH bl.department "
+          + "WHERE bl.budget = :budget")
+  List<BudgetLine> findByBudget(@Param("budget") Budget budget);
 
   List<BudgetLine> findByBudgetAndPeriod(Budget budget, Period period);
 

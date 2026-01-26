@@ -18,7 +18,13 @@ public interface PayableAllocationRepository extends JpaRepository<PayableAlloca
 
   List<PayableAllocation> findBySupplierBill(SupplierBill supplierBill);
 
-  List<PayableAllocation> findByPaymentTransaction(Transaction paymentTransaction);
+  @Query(
+      "SELECT pa FROM PayableAllocation pa "
+          + "JOIN FETCH pa.supplierBill sb "
+          + "LEFT JOIN FETCH sb.contact "
+          + "WHERE pa.paymentTransaction = :paymentTransaction")
+  List<PayableAllocation> findByPaymentTransaction(
+      @Param("paymentTransaction") Transaction paymentTransaction);
 
   List<PayableAllocation> findByCompanyOrderByAllocatedAtDesc(Company company);
 

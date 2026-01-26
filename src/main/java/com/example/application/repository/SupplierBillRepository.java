@@ -18,7 +18,13 @@ import com.example.application.domain.SupplierBill.BillStatus;
 @Repository
 public interface SupplierBillRepository extends JpaRepository<SupplierBill, Long> {
 
-  List<SupplierBill> findByCompanyOrderByBillDateDescBillNumberDesc(Company company);
+  @Query(
+      "SELECT b FROM SupplierBill b "
+          + "JOIN FETCH b.contact "
+          + "WHERE b.company = :company "
+          + "ORDER BY b.billDate DESC, b.billNumber DESC")
+  List<SupplierBill> findByCompanyOrderByBillDateDescBillNumberDesc(
+      @Param("company") Company company);
 
   List<SupplierBill> findByCompanyAndStatusOrderByBillDateDesc(Company company, BillStatus status);
 
@@ -30,7 +36,9 @@ public interface SupplierBillRepository extends JpaRepository<SupplierBill, Long
 
   // Overdue bills (status = POSTED, due_date < today, balance > 0)
   @Query(
-      "SELECT b FROM SupplierBill b WHERE b.company = :company AND b.status = 'POSTED' "
+      "SELECT b FROM SupplierBill b "
+          + "JOIN FETCH b.contact "
+          + "WHERE b.company = :company AND b.status = 'POSTED' "
           + "AND b.dueDate < :today AND (b.total - b.amountPaid) > 0 "
           + "ORDER BY b.dueDate ASC")
   List<SupplierBill> findOverdueByCompany(
@@ -38,7 +46,9 @@ public interface SupplierBillRepository extends JpaRepository<SupplierBill, Long
 
   // Outstanding bills (status = POSTED, balance > 0)
   @Query(
-      "SELECT b FROM SupplierBill b WHERE b.company = :company AND b.status = 'POSTED' "
+      "SELECT b FROM SupplierBill b "
+          + "JOIN FETCH b.contact "
+          + "WHERE b.company = :company AND b.status = 'POSTED' "
           + "AND (b.total - b.amountPaid) > 0 ORDER BY b.dueDate ASC")
   List<SupplierBill> findOutstandingByCompany(@Param("company") Company company);
 
@@ -75,7 +85,9 @@ public interface SupplierBillRepository extends JpaRepository<SupplierBill, Long
 
   // Search bills by number or contact name
   @Query(
-      "SELECT b FROM SupplierBill b WHERE b.company = :company AND "
+      "SELECT b FROM SupplierBill b "
+          + "JOIN FETCH b.contact "
+          + "WHERE b.company = :company AND "
           + "(LOWER(b.billNumber) LIKE LOWER(CONCAT('%', :search, '%')) OR "
           + "LOWER(b.contact.name) LIKE LOWER(CONCAT('%', :search, '%')) OR "
           + "LOWER(b.supplierReference) LIKE LOWER(CONCAT('%', :search, '%'))) "
@@ -94,7 +106,9 @@ public interface SupplierBillRepository extends JpaRepository<SupplierBill, Long
 
   // Bills due within date range (for payment run selection)
   @Query(
-      "SELECT b FROM SupplierBill b WHERE b.company = :company AND b.status = 'POSTED' "
+      "SELECT b FROM SupplierBill b "
+          + "JOIN FETCH b.contact "
+          + "WHERE b.company = :company AND b.status = 'POSTED' "
           + "AND (b.total - b.amountPaid) > 0 AND b.dueDate <= :dueBy "
           + "ORDER BY b.dueDate ASC, b.contact.name ASC")
   List<SupplierBill> findPayableBillsDueBy(

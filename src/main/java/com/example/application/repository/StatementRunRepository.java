@@ -15,9 +15,20 @@ import com.example.application.domain.StatementRun.RunStatus;
 @Repository
 public interface StatementRunRepository extends JpaRepository<StatementRun, Long> {
 
-  List<StatementRun> findByCompanyOrderByCreatedAtDesc(Company company);
+  @Query(
+      "SELECT sr FROM StatementRun sr "
+          + "LEFT JOIN FETCH sr.createdBy "
+          + "WHERE sr.company = :company "
+          + "ORDER BY sr.createdAt DESC")
+  List<StatementRun> findByCompanyOrderByCreatedAtDesc(@Param("company") Company company);
 
-  List<StatementRun> findByCompanyAndStatusOrderByCreatedAtDesc(Company company, RunStatus status);
+  @Query(
+      "SELECT sr FROM StatementRun sr "
+          + "LEFT JOIN FETCH sr.createdBy "
+          + "WHERE sr.company = :company AND sr.status = :status "
+          + "ORDER BY sr.createdAt DESC")
+  List<StatementRun> findByCompanyAndStatusOrderByCreatedAtDesc(
+      @Param("company") Company company, @Param("status") RunStatus status);
 
   @Query(
       "SELECT r FROM StatementRun r WHERE r.company = :company "

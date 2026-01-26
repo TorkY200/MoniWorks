@@ -18,7 +18,13 @@ import com.example.application.domain.SalesInvoice.InvoiceStatus;
 @Repository
 public interface SalesInvoiceRepository extends JpaRepository<SalesInvoice, Long> {
 
-  List<SalesInvoice> findByCompanyOrderByIssueDateDescInvoiceNumberDesc(Company company);
+  @Query(
+      "SELECT i FROM SalesInvoice i "
+          + "JOIN FETCH i.contact "
+          + "WHERE i.company = :company "
+          + "ORDER BY i.issueDate DESC, i.invoiceNumber DESC")
+  List<SalesInvoice> findByCompanyOrderByIssueDateDescInvoiceNumberDesc(
+      @Param("company") Company company);
 
   List<SalesInvoice> findByCompanyAndStatusOrderByIssueDateDesc(
       Company company, InvoiceStatus status);
@@ -31,7 +37,9 @@ public interface SalesInvoiceRepository extends JpaRepository<SalesInvoice, Long
 
   // Overdue invoices (status = ISSUED, due_date < today, balance > 0)
   @Query(
-      "SELECT i FROM SalesInvoice i WHERE i.company = :company AND i.status = 'ISSUED' "
+      "SELECT i FROM SalesInvoice i "
+          + "JOIN FETCH i.contact "
+          + "WHERE i.company = :company AND i.status = 'ISSUED' "
           + "AND i.dueDate < :today AND (i.total - i.amountPaid) > 0 "
           + "ORDER BY i.dueDate ASC")
   List<SalesInvoice> findOverdueByCompany(
@@ -39,7 +47,9 @@ public interface SalesInvoiceRepository extends JpaRepository<SalesInvoice, Long
 
   // Outstanding invoices (status = ISSUED, balance > 0)
   @Query(
-      "SELECT i FROM SalesInvoice i WHERE i.company = :company AND i.status = 'ISSUED' "
+      "SELECT i FROM SalesInvoice i "
+          + "JOIN FETCH i.contact "
+          + "WHERE i.company = :company AND i.status = 'ISSUED' "
           + "AND (i.total - i.amountPaid) > 0 ORDER BY i.dueDate ASC")
   List<SalesInvoice> findOutstandingByCompany(@Param("company") Company company);
 
@@ -76,7 +86,9 @@ public interface SalesInvoiceRepository extends JpaRepository<SalesInvoice, Long
 
   // Search invoices by number or contact name
   @Query(
-      "SELECT i FROM SalesInvoice i WHERE i.company = :company AND "
+      "SELECT i FROM SalesInvoice i "
+          + "JOIN FETCH i.contact "
+          + "WHERE i.company = :company AND "
           + "(LOWER(i.invoiceNumber) LIKE LOWER(CONCAT('%', :search, '%')) OR "
           + "LOWER(i.contact.name) LIKE LOWER(CONCAT('%', :search, '%')) OR "
           + "LOWER(i.reference) LIKE LOWER(CONCAT('%', :search, '%'))) "

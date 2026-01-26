@@ -16,8 +16,14 @@ import com.example.application.domain.UserInvitation.InvitationStatus;
 @Repository
 public interface UserInvitationRepository extends JpaRepository<UserInvitation, Long> {
 
-  /** Find an invitation by its unique token. */
-  Optional<UserInvitation> findByToken(String token);
+  /** Find an invitation by its unique token with eager loading for display. */
+  @Query(
+      "SELECT i FROM UserInvitation i "
+          + "JOIN FETCH i.company "
+          + "JOIN FETCH i.role "
+          + "LEFT JOIN FETCH i.invitedBy "
+          + "WHERE i.token = :token")
+  Optional<UserInvitation> findByToken(@Param("token") String token);
 
   /** Find all pending invitations for a given email address. */
   @Query(
@@ -35,8 +41,15 @@ public interface UserInvitationRepository extends JpaRepository<UserInvitation, 
   List<UserInvitation> findByCompanyOrderByCreatedAtDesc(@Param("company") Company company);
 
   /** Find invitations for a company with a specific status. */
+  @Query(
+      "SELECT i FROM UserInvitation i "
+          + "JOIN FETCH i.role "
+          + "LEFT JOIN FETCH i.invitedBy "
+          + "LEFT JOIN FETCH i.acceptedUser "
+          + "WHERE i.company = :company AND i.status = :status "
+          + "ORDER BY i.createdAt DESC")
   List<UserInvitation> findByCompanyAndStatusOrderByCreatedAtDesc(
-      Company company, InvitationStatus status);
+      @Param("company") Company company, @Param("status") InvitationStatus status);
 
   /** Check if there's already a pending invitation for this email and company. */
   @Query(

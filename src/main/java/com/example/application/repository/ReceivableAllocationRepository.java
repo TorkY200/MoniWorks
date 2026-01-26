@@ -19,7 +19,13 @@ public interface ReceivableAllocationRepository extends JpaRepository<Receivable
 
   List<ReceivableAllocation> findBySalesInvoice(SalesInvoice salesInvoice);
 
-  List<ReceivableAllocation> findByReceiptTransaction(Transaction receiptTransaction);
+  @Query(
+      "SELECT ra FROM ReceivableAllocation ra "
+          + "JOIN FETCH ra.salesInvoice si "
+          + "LEFT JOIN FETCH si.contact "
+          + "WHERE ra.receiptTransaction = :receiptTransaction")
+  List<ReceivableAllocation> findByReceiptTransaction(
+      @Param("receiptTransaction") Transaction receiptTransaction);
 
   List<ReceivableAllocation> findByCompanyOrderByAllocatedAtDesc(Company company);
 
