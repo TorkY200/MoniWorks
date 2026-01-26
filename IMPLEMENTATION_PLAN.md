@@ -77,6 +77,7 @@
 - **Phase 70 Bank Reconciliation Matching Enhancement COMPLETE** - Tag: 0.8.3
 - **Phase 71 Contact Color Tag UI COMPLETE** - Tag: 0.8.4
 - **Phase 72 Email Reports from ReportsView COMPLETE** - Tag: 0.8.5
+- **Phase 73 ProductsView Active and Inventoried Filters COMPLETE** - Tag: 0.8.6
 - All 290 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 13, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 32, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21, KPIImportServiceTest: 16, RecurringTemplateServiceTest: 8)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
@@ -1863,6 +1864,22 @@ Per specs, Release 1 must deliver:
 - [x] All 290 tests passing
 - [x] No forbidden markers
 
+### Phase 73: ProductsView Active and Inventoried Filters (COMPLETE) - Tag: 0.8.6
+- [x] Added Active status filter to ProductsView toolbar (spec 08)
+  - ComboBox with All/Active/Inactive options
+  - Defaults to "All" to show all products
+  - Filters product grid by active status
+- [x] Added Inventoried filter to ProductsView toolbar (spec 08)
+  - ComboBox with All/Inventoried/Non-Inventory options
+  - Defaults to "All" to show all products
+  - Filters product grid by inventory tracking flag
+- [x] Updated filterProducts() method to apply all filters
+  - Combines search, category, active, and inventoried filters
+  - Stream-based filtering for efficient client-side filtering
+- [x] Completes spec 08 UX requirement: "Products grid with filters by category, active, inventoried"
+- [x] All 290 tests passing
+- [x] No forbidden markers
+
 ## Lessons Learned
 - VaadinWebSecurity deprecated in Vaadin 24.8+ - use VaadinSecurityConfigurer.vaadin() instead
 - Test profile should use hibernate.ddl-auto=create-drop with Flyway disabled to avoid schema conflicts
@@ -1971,6 +1988,7 @@ Per specs, Release 1 must deliver:
 - Price/description updates on recurrence (spec 11) - Phase 65
 - Contact color tag UI (spec 07) - Phase 71
 - Email reports from ReportsView (spec 13) - Phase 72
+- ProductsView active/inventoried filters (spec 08) - Phase 73
 
 ## Technical Notes
 - Build: `./mvnw compile`

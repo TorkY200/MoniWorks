@@ -75,6 +75,8 @@ public class ProductsView extends VerticalLayout {
   private final Grid<Product> grid = new Grid<>();
   private final TextField searchField = new TextField();
   private final ComboBox<String> categoryFilter = new ComboBox<>();
+  private final ComboBox<String> activeFilter = new ComboBox<>();
+  private final ComboBox<String> inventoriedFilter = new ComboBox<>();
   private GridCustomizer<Product> gridCustomizer;
 
   private final VerticalLayout detailLayout = new VerticalLayout();
@@ -205,6 +207,20 @@ public class ProductsView extends VerticalLayout {
     categoryFilter.addValueChangeListener(e -> filterProducts());
     categoryFilter.setWidth("150px");
 
+    // Active status filter (spec 08)
+    activeFilter.setPlaceholder("Status");
+    activeFilter.setItems("All", "Active", "Inactive");
+    activeFilter.setValue("All");
+    activeFilter.addValueChangeListener(e -> filterProducts());
+    activeFilter.setWidth("100px");
+
+    // Inventoried filter (spec 08)
+    inventoriedFilter.setPlaceholder("Inventory");
+    inventoriedFilter.setItems("All", "Inventoried", "Non-Inventory");
+    inventoriedFilter.setValue("All");
+    inventoriedFilter.addValueChangeListener(e -> filterProducts());
+    inventoriedFilter.setWidth("130px");
+
     // Grid customizer for column visibility and saved views
     Company company = companyContextService.getCurrentCompany();
     User user = companyContextService.getCurrentUser();
@@ -230,7 +246,8 @@ public class ProductsView extends VerticalLayout {
         });
     refreshButton.getElement().setAttribute("title", "Refresh");
 
-    HorizontalLayout filters = new HorizontalLayout(searchField, categoryFilter);
+    HorizontalLayout filters =
+        new HorizontalLayout(searchField, categoryFilter, activeFilter, inventoriedFilter);
     if (gridCustomizer != null) {
       filters.add(gridCustomizer);
     }
@@ -262,6 +279,8 @@ public class ProductsView extends VerticalLayout {
     Company company = companyContextService.getCurrentCompany();
     String search = searchField.getValue();
     String category = categoryFilter.getValue();
+    String activeValue = activeFilter.getValue();
+    String inventoriedValue = inventoriedFilter.getValue();
 
     List<Product> products;
     if (search != null && !search.isBlank()) {
@@ -275,6 +294,18 @@ public class ProductsView extends VerticalLayout {
     // Apply category filter if both search and category are specified
     if (search != null && !search.isBlank() && category != null && !category.isBlank()) {
       products = products.stream().filter(p -> category.equals(p.getCategory())).toList();
+    }
+
+    // Apply active status filter (spec 08)
+    if (activeValue != null && !"All".equals(activeValue)) {
+      boolean wantActive = "Active".equals(activeValue);
+      products = products.stream().filter(p -> p.isActive() == wantActive).toList();
+    }
+
+    // Apply inventoried filter (spec 08)
+    if (inventoriedValue != null && !"All".equals(inventoriedValue)) {
+      boolean wantInventoried = "Inventoried".equals(inventoriedValue);
+      products = products.stream().filter(p -> p.isInventoried() == wantInventoried).toList();
     }
 
     grid.setItems(products);
