@@ -1969,6 +1969,8 @@ Per specs, Release 1 must deliver:
 - Security level filtering for all financial reports (spec 02) - Phase 64
 - KPI CSV Import (spec 12 completion) - Phase 64
 - Price/description updates on recurrence (spec 11) - Phase 65
+- Contact color tag UI (spec 07) - Phase 71
+- Email reports from ReportsView (spec 13) - Phase 72
 
 ## Technical Notes
 - Build: `./mvnw compile`
