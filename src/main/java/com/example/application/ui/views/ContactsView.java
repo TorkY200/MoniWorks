@@ -43,6 +43,7 @@ import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.splitlayout.SplitLayout;
 import com.vaadin.flow.component.tabs.TabSheet;
 import com.vaadin.flow.component.textfield.BigDecimalField;
+import com.vaadin.flow.component.textfield.EmailField;
 import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.component.upload.Upload;
@@ -634,8 +635,10 @@ public class ContactsView extends VerticalLayout {
     mobileField.setMaxLength(50);
     if (!isNew && contact.getMobile() != null) mobileField.setValue(contact.getMobile());
 
-    TextField emailField = new TextField("Email");
-    emailField.setMaxLength(100);
+    EmailField emailField = new EmailField("Email");
+    emailField.setMaxLength(254);
+    emailField.setErrorMessage("Please enter a valid email address");
+    emailField.setClearButtonVisible(true);
     if (!isNew && contact.getEmail() != null) emailField.setValue(contact.getEmail());
 
     TextField websiteField = new TextField("Website");
@@ -711,6 +714,14 @@ public class ContactsView extends VerticalLayout {
           if (codeField.isEmpty() || nameField.isEmpty() || typeCombo.isEmpty()) {
             Notification.show(
                     "Please fill in all required fields", 3000, Notification.Position.MIDDLE)
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            return;
+          }
+
+          // Validate email format if provided
+          if (!emailField.isEmpty() && emailField.isInvalid()) {
+            Notification.show(
+                    "Please enter a valid email address", 3000, Notification.Position.MIDDLE)
                 .addThemeVariants(NotificationVariant.LUMO_ERROR);
             return;
           }
@@ -793,8 +804,10 @@ public class ContactsView extends VerticalLayout {
     nameField.setRequired(true);
     if (!isNew) nameField.setValue(person.getName());
 
-    TextField emailField = new TextField("Email");
-    emailField.setMaxLength(100);
+    EmailField emailField = new EmailField("Email");
+    emailField.setMaxLength(254);
+    emailField.setErrorMessage("Please enter a valid email address");
+    emailField.setClearButtonVisible(true);
     if (!isNew && person.getEmail() != null) emailField.setValue(person.getEmail());
 
     TextField phoneField = new TextField("Phone");

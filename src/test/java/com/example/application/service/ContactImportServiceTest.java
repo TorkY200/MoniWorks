@@ -350,6 +350,68 @@ class ContactImportServiceTest {
     assertTrue(sample.contains("SUPPLIER"));
   }
 
+  @Test
+  void importContacts_InvalidEmailFormat_ReportsError() throws IOException {
+    // Given - CSV with invalid email format
+    String csv =
+        """
+            code,name,email
+            CUST001,Acme Corp,not-an-email
+            """;
+
+    // When
+    ImportResult result = importService.importContacts(toInputStream(csv), company, user, false);
+
+    // Then
+    assertFalse(result.success());
+    assertTrue(result.errors().stream().anyMatch(e -> e.contains("Invalid email format")));
+    verify(contactRepository, never()).save(any());
+  }
+
+  @Test
+  void importContacts_ValidEmail_ImportsSuccessfully() throws IOException {
+    // Given - CSV with valid email
+    String csv =
+        """
+            code,name,email
+            CUST001,Acme Corp,billing@acme.com
+            """;
+
+    when(contactRepository.findByCompanyAndCode(any(), anyString())).thenReturn(Optional.empty());
+    when(contactRepository.save(any(Contact.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    // When
+    ImportResult result = importService.importContacts(toInputStream(csv), company, user, false);
+
+    // Then
+    assertTrue(result.success());
+    assertEquals(1, result.imported());
+    verify(contactRepository).save(any(Contact.class));
+  }
+
+  @Test
+  void importContacts_EmptyEmail_ImportsSuccessfully() throws IOException {
+    // Given - CSV with empty email (should be allowed)
+    String csv =
+        """
+            code,name,email
+            CUST001,Acme Corp,
+            """;
+
+    when(contactRepository.findByCompanyAndCode(any(), anyString())).thenReturn(Optional.empty());
+    when(contactRepository.save(any(Contact.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    // When
+    ImportResult result = importService.importContacts(toInputStream(csv), company, user, false);
+
+    // Then
+    assertTrue(result.success());
+    assertEquals(1, result.imported());
+    verify(contactRepository).save(any(Contact.class));
+  }
+
   private InputStream toInputStream(String content) {
     return new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8));
   }

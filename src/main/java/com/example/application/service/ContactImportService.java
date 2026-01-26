@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +34,10 @@ import com.example.application.repository.ContactRepository;
 @Service
 @Transactional
 public class ContactImportService {
+
+  /** Email validation pattern per RFC 5322 simplified. */
+  private static final Pattern EMAIL_PATTERN =
+      Pattern.compile("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
 
   private final ContactRepository contactRepository;
   private final AuditService auditService;
@@ -218,6 +223,13 @@ public class ContactImportService {
           "Line " + lineNumber + ": Code '" + code + "' exceeds maximum length of 11 characters");
     }
 
+    // Validate email format if provided
+    String email = getColumnValue(values, columnMap, "email");
+    if (email != null && !email.isBlank() && !isValidEmail(email)) {
+      return new ProcessRowResult(
+          RowAction.ERROR, "Line " + lineNumber + ": Invalid email format '" + email + "'");
+    }
+
     // Check if contact exists
     Contact existing = contactRepository.findByCompanyAndCode(company, code).orElse(null);
 
@@ -373,5 +385,13 @@ public class ContactImportService {
             SUPP001,Widget Supplies,SUPPLIER,orders@widgets.com,555-5678,456 Oak Ave,Wellington,,6011,NZ,Manufacturing,Net 14
             BOTH001,Partner Inc,BOTH,contact@partner.com,555-9999,789 Pine Rd,Christchurch,,8011,NZ,Services,Due on Receipt
             """;
+  }
+
+  /** Validates email format using RFC 5322 simplified pattern. */
+  private boolean isValidEmail(String email) {
+    if (email == null || email.isBlank()) {
+      return true; // Empty emails are valid (optional field)
+    }
+    return EMAIL_PATTERN.matcher(email.trim()).matches();
   }
 }

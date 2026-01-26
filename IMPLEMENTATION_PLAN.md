@@ -80,7 +80,8 @@
 - **Phase 73 ProductsView Active and Inventoried Filters COMPLETE** - Tag: 0.8.6
 - **Phase 74 Cash Basis GST Return Support COMPLETE** - Tag: 0.8.7
 - **Phase 75 Posting Confirmation Dialog COMPLETE** - Tag: 0.8.8
-- All 298 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 13, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 12, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 32, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21, KPIImportServiceTest: 16, RecurringTemplateServiceTest: 8, TaxReturnServiceTest: 8)
+- **Phase 76 Email Validation Enhancement COMPLETE** - Tag: 0.8.9
+- All 301 tests passing (PostingServiceTest: 7, ReportingServiceTest: 5, TaxCalculationServiceTest: 14, AttachmentServiceTest: 13, GlobalSearchServiceTest: 12, EmailServiceTest: 23, InvitationServiceTest: 18, SalesInvoiceServiceTest: 15, ContactImportServiceTest: 15, BudgetImportServiceTest: 16, ProductImportServiceTest: 14, ApplicationTest: 1, AuthenticationEventListenerTest: 5, AuditLogoutHandlerTest: 4, ReceivableAllocationServiceTest: 13, PayableAllocationServiceTest: 13, BankImportServiceTest: 13, AllocationRuleTest: 32, SupplierBillServiceTest: 15, TransactionImportServiceTest: 21, KPIImportServiceTest: 16, RecurringTemplateServiceTest: 8, TaxReturnServiceTest: 8)
 - Core domain entities created: Company, User, Account, FiscalYear, Period, Transaction, TransactionLine, LedgerEntry, TaxCode, TaxLine, TaxReturn, TaxReturnLine, Department, Role, Permission, CompanyMembership, AuditEvent, BankStatementImport, BankFeedItem, AllocationRule, Attachment, AttachmentLink, Contact, ContactPerson, ContactNote, Product, SalesInvoice, SalesInvoiceLine, ReceivableAllocation, SupplierBill, SupplierBillLine, PayableAllocation, PaymentRun, Budget, BudgetLine, KPI, KPIValue, RecurringTemplate, RecurrenceExecutionLog, SavedView, UserInvitation, ReconciliationMatch
 - Database configured: H2 for development, PostgreSQL for production
 - Flyway migrations: V1__initial_schema.sql, V2__bank_accounts.sql, V3__tax_lines.sql, V4__tax_returns.sql, V5__attachments.sql, V6__contacts.sql, V7__products.sql, V8__sales_invoices.sql, V9__supplier_bills.sql, V10__budgets_kpis.sql, V11__rename_kpi_value_column.sql, V12__recurring_templates.sql, V13__saved_views_search.sql, V14__statement_runs.sql, V15__additional_permissions.sql, V16__user_security_level.sql, V17__user_invitations.sql, V18__credit_notes.sql, V19__reconciliation_match.sql, V20__ledger_entry_reconciliation.sql, V21__allocation_rule_amount_range.sql, V22__debit_notes.sql, V23__reversal_link.sql, V24__clerk_roles.sql, V25__allocation_rule_counter_party.sql
@@ -1912,6 +1913,15 @@ Per specs, Release 1 must deliver:
   - User must click "Post Transaction" button to confirm
   - Cancel button returns to transaction list without posting
 - [x] All 298 tests passing
+- [x] No forbidden markers
+
+### Phase 76: Email Validation Enhancement (COMPLETE) - Tag: 0.8.9
+- [x] Added EmailField component in ContactsView for contact email (replaces TextField)
+- [x] Added EmailField component in ContactsView for contact person email (replaces TextField)
+- [x] Added email format validation before contact save in UI
+- [x] Added email pattern validation in ContactImportService for CSV imports
+- [x] Added 3 new tests for email validation in ContactImportServiceTest
+- [x] All 301 tests passing (ContactImportServiceTest: 15)
 - [x] No forbidden markers
 
 ## Lessons Learned
